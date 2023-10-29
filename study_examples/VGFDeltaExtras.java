@@ -224,6 +224,6 @@ public class VGFDeltaExtras extends Study
 }
 
 /*
-mv JavaClass.jar /Users/ryangaraygay/MotiveWave\ Extensions/
-touch .last_updated 
+mv VGF_MotiveWave_Studies.jar /Users/ryangaraygay/MotiveWave\ Extensions/
+touch /Users/ryangaraygay/MotiveWave\ Extensions/.last_updated 
 */
