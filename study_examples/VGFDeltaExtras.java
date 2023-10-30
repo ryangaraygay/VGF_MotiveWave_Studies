@@ -22,7 +22,7 @@ public class VGFDeltaExtras extends Study
 {
   enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, DELTA_EXTREME, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL };
 
-  enum Names { UPBID, DOWNASK, MAXBARS, BPVOL, BPVOLTHRESH, MINRANGE, BPVOLRANGE, BPVOLOFFSET, ZPRNT, ZPRINTOFFST };
+  enum Names { UPBID, DOWNASK, MAXBARS, BPVOL, BPVOLTHRESH, MINRANGE, BPVOLRANGE, BPVOLOFFSET, ZPRNT, ZPRINTOFFST, ENABLED };
 
   @Override
   public void initialize(Defaults defaults)
@@ -34,6 +34,8 @@ public class VGFDeltaExtras extends Study
     sd.addTab(tab);
 
     SettingGroup colors = new SettingGroup("Display");
+    colors.addRow(new BooleanDescriptor(Names.ENABLED.toString(), "Enable Operations", true));
+
     colors.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 20, 1, 10000, 1));
     colors.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 8, 1, 10, 1));
     
@@ -57,15 +59,17 @@ public class VGFDeltaExtras extends Study
     desc.exportValue(new ValueDescriptor(Values.DELTAMAX, "Delta Max", null));
     desc.exportValue(new ValueDescriptor(Values.HQVOL, "Upper Vol %", null));
     desc.exportValue(new ValueDescriptor(Values.LQVOL, "Lower Vol %", null));
-    desc.exportValue(new ValueDescriptor(Values.BHVOL, "Bid High Vol", null));
-    desc.exportValue(new ValueDescriptor(Values.AHVOL, "Ask High Vol", null));
-    desc.exportValue(new ValueDescriptor(Values.BLVOL, "Bid Low Vol", null));
-    desc.exportValue(new ValueDescriptor(Values.ALVOL, "Ask Low Vol", null));
+    // desc.exportValue(new ValueDescriptor(Values.BHVOL, "Bid High Vol", null));
+    // desc.exportValue(new ValueDescriptor(Values.AHVOL, "Ask High Vol", null));
+    // desc.exportValue(new ValueDescriptor(Values.BLVOL, "Bid Low Vol", null));
+    // desc.exportValue(new ValueDescriptor(Values.ALVOL, "Ask Low Vol", null));
   }
 
   @Override
   protected void calculate(int index, DataContext ctx)
   {
+    if (!getSettings().getBoolean(Names.ENABLED.toString())) return;
+
     DataSeries series = ctx.getDataSeries();
     int seriesSize = series.size();
     if (seriesSize == 0) return;
@@ -74,50 +78,63 @@ public class VGFDeltaExtras extends Study
     int startingIndex = seriesSize - barLimit - 1;
 
     if (index < startingIndex) return;
+  
+    long sTime = series.getStartTime(index);
+    long eTime = series.getEndTime(index);
+    float high = series.getHigh(index);
+    float low = series.getLow(index);
+
+    long lowQuantileVolume = 0;
+    long highQuantileVolume = 0;
+    int minDelta = 0;
+    int maxDelta = 0;      
+    int deltaVolume = 0;
+    int bidsAtHigh = 0;
+    int bidsAtLow = 0;
+    int asksAtHigh = 0;
+    int asksAtLow = 0;
 
     var r = series.getRange(index);
+    float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString(), index)/100.0f;
+    var highQuantilePrice = high - (r * topBottomRangePerc);
+    var lowQuantilePrice = low + (r * topBottomRangePerc);
+
+    List<Tick> ts = series.getInstrument().getTicks(sTime, eTime);
+    for (int i = 0; i < ts.size(); i++) {
+      Tick t = ts.get(i);
+      int tv = t.getVolume();
+      boolean isAsk = t.isAskTick();
+      deltaVolume += tv * (isAsk ? 1 : -1);
+      highQuantileVolume += t.getPrice() > highQuantilePrice ? tv : 0;
+      lowQuantileVolume += t.getPrice() < lowQuantilePrice ? tv : 0;
+      minDelta = Math.min(deltaVolume, minDelta);      
+      maxDelta = Math.max(deltaVolume, maxDelta);
+      bidsAtHigh += t.getPrice() == high && !isAsk ? tv : 0;
+      bidsAtLow += t.getPrice() == low && !isAsk ? tv : 0;
+      asksAtHigh += t.getPrice() == high && isAsk ? tv : 0;
+      asksAtLow += t.getPrice() == low && isAsk ? tv : 0; 
+    }
+
+    series.setInt(index, Values.DELTACLOSE, deltaVolume);
+    series.setInt(index, Values.DELTAMIN, minDelta);
+    series.setInt(index, Values.DELTAMAX, maxDelta);
+
+    // series.setInt(index, Values.AHVOL, asksAtHigh);
+    // series.setInt(index, Values.ALVOL, asksAtLow);
+    // series.setInt(index, Values.BHVOL, bidsAtHigh);
+    // series.setInt(index, Values.BLVOL, bidsAtLow);
+
+    // even if basic information above is collected bar-by-bar
+    // we compute signals only if bar is large enough
     var minimumBarRange = getSettings().getInteger(Names.MINRANGE.toString(), index);
     var minTickSize = series.getInstrument().getTickSize();
     var largeEnoughBar = (r/minTickSize) >= minimumBarRange;
-
     if (largeEnoughBar) {
-      long sTime = series.getStartTime(index);
-      long eTime = series.getEndTime(index);
-
-      float high = series.getHigh(index);
-      float low = series.getLow(index);
-      float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString(), index)/100.0f;
-      var highQuantilePrice = high - (r * topBottomRangePerc);
-      var lowQuantilePrice = low + (r * topBottomRangePerc);
-
-      long lowQuantileVolume = 0;
-      long highQuantileVolume = 0;
-      int minDelta = 0;
-      int maxDelta = 0;      
-      int deltaVolume = 0;
-      int bidsAtHigh = 0;
-      int bidsAtLow = 0;
-      int asksAtHigh = 0;
-      int asksAtLow = 0;
-      
-      List<Tick> ts = series.getInstrument().getTicks(sTime, eTime);
-      for (int i = 0; i < ts.size(); i++) {
-        Tick t = ts.get(i);
-        boolean isAsk = t.isAskTick();
-        deltaVolume += t.getVolume() * (isAsk ? 1 : -1);
-        highQuantileVolume += t.getPrice() > highQuantilePrice ? t.getVolume() : 0;
-        lowQuantileVolume += t.getPrice() < lowQuantilePrice ? t.getVolume() : 0;
-        minDelta = Math.min(deltaVolume, minDelta);      
-        maxDelta = Math.max(deltaVolume, maxDelta);
-        bidsAtHigh += t.getPrice() == high && !isAsk ? t.getVolume() : 0;
-        bidsAtLow += t.getPrice() == low && !isAsk ? t.getVolume() : 0;
-        asksAtHigh += t.getPrice() == high && isAsk ? t.getVolume() : 0;
-        asksAtLow += t.getPrice() == low && isAsk ? t.getVolume() : 0; 
-      }
-
       var totalVolume = series.getVolume(index);
       int hqvolperc = (int)(highQuantileVolume * 100.0 / totalVolume + 0.5);
       int lqvolperc = (int)(lowQuantileVolume * 100.0 / totalVolume + 0.5);
+      series.setInt(index, Values.HQVOL, hqvolperc);
+      series.setInt(index, Values.LQVOL, lqvolperc);
 
       int volThreshold = getSettings().getInteger(Names.BPVOLTHRESH.toString(), index);
       if (hqvolperc > volThreshold || lqvolperc > volThreshold) {
@@ -129,17 +146,6 @@ public class VGFDeltaExtras extends Study
         Marker m = new Marker(c, pos, bpMarker);
         addFigure(m);
       }
-
-      series.setInt(index, Values.DELTACLOSE, deltaVolume);
-      series.setInt(index, Values.DELTAMIN, minDelta);
-      series.setInt(index, Values.DELTAMAX, maxDelta);
-      series.setInt(index, Values.HQVOL, hqvolperc);
-      series.setInt(index, Values.LQVOL, lqvolperc);
-
-      series.setInt(index, Values.AHVOL, asksAtHigh);
-      series.setInt(index, Values.ALVOL, asksAtLow);
-      series.setInt(index, Values.BHVOL, bidsAtHigh);
-      series.setInt(index, Values.BLVOL, bidsAtLow);
 
       float close = series.getClose(index);
       float open = series.getOpen(index);
@@ -160,11 +166,11 @@ public class VGFDeltaExtras extends Study
       // N-0 on highs
       // 0-N on lows
       if (bidsAtHigh > 0 && asksAtHigh == 0) {
-        aboveSignals.append("\nZPD");
+        aboveSignals.append("\nZP");
       }
 
       if (bidsAtLow == 0 && asksAtLow > 0) {
-        belowSignals.append("\nZPU");
+        belowSignals.append("\nZP");
       }
 
       // delta flip (uncommon so defer for now - refine it to be within thresholds rather than actual extremes)
@@ -181,13 +187,29 @@ public class VGFDeltaExtras extends Study
 
       int exhaustionUpperBound = 10;
       if (close < open && asksAtHigh <= exhaustionUpperBound) {
-        aboveSignals.append("\nEPD");
+        aboveSignals.append("\nEP");
       }
 
       if (open > close && bidsAtLow <= exhaustionUpperBound) {
-        belowSignals.append("\nEPU");
+        belowSignals.append("\nEP");
       }
 
+      // delta rising/falling
+      int deltaSequenceCount = 4; // todo: allow user to configure sequence count (as well as disable this part)
+      int[] deltas = new int[deltaSequenceCount];
+      for (int i = 1; i <= deltaSequenceCount; i++) {
+        deltas[i-1] = series.getInt(index - (deltaSequenceCount - i), Values.DELTACLOSE);
+      }
+
+      Direction d = evaluateDirection(deltas);
+      if (d == Direction.Rise) {
+        belowSignals.append("\nDR"); 
+        // debug(sTime, "delta rise", deltas[0], deltas[1], deltas[2], deltas[3]);
+      } else if (d == Direction.Fall) {
+        aboveSignals.append("\nDF"); 
+        // debug(sTime, "delta fall", deltas[0], deltas[1], deltas[2], deltas[3]);
+      }
+      
       if (aboveSignals.length() > 0) {
         Coordinate c = new Coordinate(sTime, high + (2 * minTickSize));
         Label l = new Label(c, aboveSignals.toString());
@@ -205,6 +227,38 @@ public class VGFDeltaExtras extends Study
 
     series.setComplete(index);
   }
+
+  private static Direction evaluateDirection(int[] arr) {
+      int oldValue = arr[0];
+      boolean decreasing = true; // assume until broken
+      boolean increasing = true; // assume until broken
+      int deltaSequenceCount = arr.length;
+      for (int i = 1; i < deltaSequenceCount; i++) {
+          int newValue = arr[i];
+          System.err.println(i + " " + newValue);
+          if (newValue > oldValue) {
+              decreasing &= false;
+          } else if (newValue < oldValue) {
+              increasing &= false;
+          } else if (newValue == oldValue) {
+              decreasing &= false;
+              increasing &= false;
+          }
+
+          oldValue = newValue;
+          oldValue = newValue;
+      }
+
+      if (increasing) {
+          return Direction.Rise;
+      } else if(decreasing) {
+          return Direction.Fall;
+      } else {
+          return Direction.Inconsistent;
+      }
+  }
+
+  enum Direction { Rise, Fall, Inconsistent }
 
   private void debug(long millisTime, Object... args) {
     var instance = java.time.Instant.ofEpochMilli(millisTime);
