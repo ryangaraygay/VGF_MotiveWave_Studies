@@ -212,12 +212,10 @@ public class VGFDeltaExtras extends Study
           aboveSignals.append("\n");
           var flipType = (priorDeltaMin == 0 ? Signals.FLIPX : ((deltaVolume == minDelta) && priorDeltaClose == priorDeltaMax) ? Signals.FLIP : Signals.FL).toString();
           aboveSignals.append(flipType);
-          debug(sTime, flipType, " down");
         } else if (priorDeltaClose < (priorDeltaMin + priorBoundSize) && deltaVolume > (maxDelta - currentBoundSize)) {
           belowSignals.append("\n");
           var flipType = (priorDeltaMax == 0 ? Signals.FLIPX : ((deltaVolume == maxDelta) && priorDeltaClose == priorDeltaMin) ? Signals.FLIP : Signals.FL).toString();
           belowSignals.append(flipType);
-          debug(sTime, flipType, " up");
         }
       }
 
