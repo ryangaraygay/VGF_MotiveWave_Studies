@@ -22,7 +22,30 @@ public class VGFDeltaExtras extends Study
 {
   enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL };
 
-  enum Names { UPBID, DOWNASK, MAXBARS, BPVOL, BPVOLTHRESH, MINRANGE, BPVOLRANGE, BPVOLOFFSET, ZPRNT, ZPRINTOFFST, ENABLED, RISEFALLBARS, DDIVLOOKBACK, FLIPTHRESH };
+  enum Names 
+  { 
+    UPBID, 
+    DOWNASK, 
+    MAXBARS, 
+    BPVOL, 
+    BPVOLTHRESH, 
+    MINRANGE, 
+    BPVOLRANGE, 
+    BPVOLOFFSET, 
+    ZPRNT, 
+    ZPRINTOFFST, 
+    ENABLED, 
+    RISEFALLBARS, 
+    DDIVLOOKBACK, 
+    FLIPTHRESH, 
+    DOJIUP, 
+    DOJIDOWN, 
+    DOJIBODY, 
+    DOJITAIL, 
+    STOPVRATIO, 
+    EXHRRATIO, 
+    EXHMAX 
+  };
 
   enum Signals {
     RISE,
@@ -33,7 +56,8 @@ public class VGFDeltaExtras extends Study
     FL, // threshold based flip
     EXH,
     ZR,
-    DIV
+    DIV,
+    STOPV // stopping volume
   }
 
   @Override
@@ -45,29 +69,45 @@ public class VGFDeltaExtras extends Study
     SettingTab tab = new SettingTab("General");
     sd.addTab(tab);
 
-    SettingGroup colors = new SettingGroup("Display");
-    colors.addRow(new BooleanDescriptor(Names.ENABLED.toString(), "Enable Operations", true));
+    SettingGroup general = new SettingGroup("General");
+    general.addRow(new BooleanDescriptor(Names.ENABLED.toString(), "Enable Operations", true));
+    general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 20, 1, 10000, 1));
+    general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 8, 1, 10, 1));
+    tab.addGroup(general);
 
-    colors.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 20, 1, 10000, 1));
-    colors.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 8, 1, 10, 1));
-    
-    colors.addRow(new ColorDescriptor(Names.UPBID.toString(), "Up/@Bid Color", Color.CYAN));
-    colors.addRow(new ColorDescriptor(Names.DOWNASK.toString(), "Down/@Ask Color", Color.MAGENTA));
-    
-    colors.addRow
-      (new MarkerDescriptor(Names.BPVOL.toString(), "B/P Volume", Enums.MarkerType.SQUARE, Enums.Size.MEDIUM, Color.GRAY, Color.GRAY, true, true)
+    SettingGroup divergence = new SettingGroup("Divergence");
+    divergence.addRow(new ColorDescriptor(Names.UPBID.toString(), "Up/@Bid Color", Color.CYAN));
+    divergence.addRow(new ColorDescriptor(Names.DOWNASK.toString(), "Down/@Ask Color", Color.MAGENTA));
+    divergence.addRow(new IntegerDescriptor(Names.DDIVLOOKBACK.toString(), "Lookback for Recent H/L", 5, 2, 50, 1));
+    tab.addGroup(divergence);
+
+    SettingGroup doji = new SettingGroup("Doji");
+    doji.addRow(new ColorDescriptor(Names.DOJIUP.toString(), "Doji Up Color", new Color(178, 255, 178)));
+    doji.addRow(new ColorDescriptor(Names.DOJIDOWN.toString(), "Doji Down Color", new Color(255, 178, 178)));
+    doji.addRow(new IntegerDescriptor(Names.DOJIBODY.toString(), "Doji Body Max %", 40, 1, 100, 1));
+    doji.addRow(new IntegerDescriptor(Names.DOJITAIL.toString(), "Doji Wick Min %", 10, 1, 100, 1));
+    tab.addGroup(doji);
+
+    SettingGroup bp = new SettingGroup("B vs P Volume Profile");
+    bp.addRow
+      (new MarkerDescriptor(Names.BPVOL.toString(), "Marker", Enums.MarkerType.SQUARE, Enums.Size.MEDIUM, Color.GRAY, Color.GRAY, true, true)
       ,(new IntegerDescriptor(Names.BPVOLOFFSET.toString(), "Offset", 0, 0, 10, 1)));
     
-    colors.addRow(new IntegerDescriptor(Names.BPVOLTHRESH.toString(), "B/P Volume %", 62, 1, 100, 1));
-    colors.addRow(new IntegerDescriptor(Names.BPVOLRANGE.toString(), "B/P Range %", 50, 1, 100, 1));
-    colors.addRow(new IntegerDescriptor(Names.RISEFALLBARS.toString(), "N Bars for Rise/Fall", 4, 3, 10, 1));
-    colors.addRow(new IntegerDescriptor(Names.DDIVLOOKBACK.toString(), "Lookback for Recent H/L", 5, 2, 50, 1));
-    colors.addRow(new IntegerDescriptor(Names.FLIPTHRESH.toString(), "Flip Tolerance %", 25, 1, 100, 1));
+    bp.addRow(new IntegerDescriptor(Names.BPVOLTHRESH.toString(), "Volume %", 62, 1, 100, 1));
+    bp.addRow(new IntegerDescriptor(Names.BPVOLRANGE.toString(), "Within Upper/Lower %", 50, 1, 100, 1));
+    tab.addGroup(bp);
 
+    SettingGroup others = new SettingGroup("Others");
+    others.addRow(new IntegerDescriptor(Names.RISEFALLBARS.toString(), "N Bars for Rise/Fall", 4, 3, 10, 1));
+    others.addRow(new IntegerDescriptor(Names.FLIPTHRESH.toString(), "Flip Tolerance %", 20, 1, 100, 1));
+    others.addRow(new DoubleDescriptor(Names.STOPVRATIO.toString(), "Stopping Volume Ratio", 0.7, 0, 1, .01));
+    others.addRow(new IntegerDescriptor(Names.EXHRRATIO.toString(), "Exhaustion Ratio", 30, 2, 100, 1));
+    others.addRow(new IntegerDescriptor(Names.EXHMAX.toString(), "Exhaustion Max", 10, 2, 100, 1));
+    tab.addGroup(others);
     // colors.addRow(new FontDescriptor(Names.PDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.GREEN, true));
     // colors.addRow(new FontDescriptor(Names.NDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.RED, true));
 
-    tab.addGroup(colors);
+    
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
     setRuntimeDescriptor(desc);
@@ -100,21 +140,44 @@ public class VGFDeltaExtras extends Study
     long eTime = series.getEndTime(index);
     float high = series.getHigh(index);
     float low = series.getLow(index);
+    float close = series.getClose(index);
+    float open = series.getOpen(index);
+    boolean upBar = close > open;
+    boolean downBar = close < open;
 
+    var body = Math.abs(close - open);
+    var tail = Math.min(open, close) - low;
+    var nose = high - Math.max(open, close);
+    var r = series.getRange(index);
+
+    if (body != 0) {
+      var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODY.toString()) / 100.0;
+      var dojiTailThresholdPerc = getSettings().getInteger(Names.DOJITAIL.toString()) / 100.0;
+      if (body < (r * dojiBodyThresholdPerc) && tail > r * dojiTailThresholdPerc && nose > r * dojiTailThresholdPerc) {
+        if (upBar) {
+          series.setPriceBarColor(index, getSettings().getColor(Names.DOJIUP.toString()));
+        } else if (downBar) {
+          series.setPriceBarColor(index, getSettings().getColor(Names.DOJIDOWN.toString()));
+        }
+      }
+    }
+    
     long lowQuantileVolume = 0;
     long highQuantileVolume = 0;
     int minDelta = 0;
     int maxDelta = 0;      
     int deltaVolume = 0;
     int bidsAtHigh = 0;
+    int bidsAtPenultimateLow = 0;
     int bidsAtLow = 0;
     int asksAtHigh = 0;
     int asksAtLow = 0;
-
-    var r = series.getRange(index);
+    int asksAtPenultimateHigh = 0;
+    
     float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString())/100.0f;
     var highQuantilePrice = high - (r * topBottomRangePerc);
     var lowQuantilePrice = low + (r * topBottomRangePerc);
+    var minTickSize = series.getInstrument().getTickSize();
 
     List<Tick> ts = series.getInstrument().getTicks(sTime, eTime);
     for (int i = 0; i < ts.size(); i++) {
@@ -128,7 +191,9 @@ public class VGFDeltaExtras extends Study
       maxDelta = Math.max(deltaVolume, maxDelta);
       bidsAtHigh += t.getPrice() == high && !isAsk ? tv : 0;
       bidsAtLow += t.getPrice() == low && !isAsk ? tv : 0;
+      bidsAtPenultimateLow += t.getPrice() == (low + minTickSize) && !isAsk ? tv : 0;
       asksAtHigh += t.getPrice() == high && isAsk ? tv : 0;
+      asksAtPenultimateHigh += t.getPrice() == (high - minTickSize) && isAsk ? tv : 0; 
       asksAtLow += t.getPrice() == low && isAsk ? tv : 0; 
     }
 
@@ -144,7 +209,6 @@ public class VGFDeltaExtras extends Study
     // even if basic information above is collected bar-by-bar
     // we compute signals only if bar is large enough
     var minimumBarRange = getSettings().getInteger(Names.MINRANGE.toString());
-    var minTickSize = series.getInstrument().getTickSize();
     var largeEnoughBar = (r/minTickSize) >= minimumBarRange;
     if (largeEnoughBar) {
       var totalVolume = series.getVolume(index);
@@ -164,15 +228,9 @@ public class VGFDeltaExtras extends Study
         addFigure(m);
       }
 
-      float close = series.getClose(index);
-      float open = series.getOpen(index);
-
       Color upBidColor = getSettings().getColor(Names.UPBID.toString());
       Color downAskColor = getSettings().getColor(Names.DOWNASK.toString());
       
-      boolean upBar = close > open;
-      boolean downBar = close < open;
-
       if (upBar && deltaVolume < 0) {
         series.setPriceBarColor(index, upBidColor);
       } else if (downBar && deltaVolume > 0) {
@@ -219,15 +277,39 @@ public class VGFDeltaExtras extends Study
         }
       }
 
-      int exhaustionUpperBound = 10;
-      if (close < open && asksAtHigh <= exhaustionUpperBound) {
-        aboveSignals.append("\n");
-        aboveSignals.append(Signals.EXH.toString());
-      }
-
-      if (open > close && bidsAtLow <= exhaustionUpperBound) {
-        belowSignals.append("\n");
-        belowSignals.append(Signals.EXH.toString());
+      // exhaustion print and stopping volume
+      var stoppingVolumeRatio = getSettings().getDouble(Names.STOPVRATIO.toString());
+      var exhaustionRatio = getSettings().getInteger(Names.EXHRRATIO.toString());
+      int exhaustionUpperBound = getSettings().getInteger(Names.EXHMAX.toString());
+      if (downBar) {
+        if (asksAtHigh <= exhaustionUpperBound) {
+          aboveSignals.append("\n");
+          aboveSignals.append(Signals.EXH.toString());
+        } else if (asksAtHigh > 0) {
+          double barRatioHigh = (asksAtPenultimateHigh * 1.0)/(asksAtHigh * 1.0);
+          // debug(sTime, String.format("%,.2f", barRatioHigh));
+          if (barRatioHigh < stoppingVolumeRatio) {
+            aboveSignals.append("\n");
+            aboveSignals.append(Signals.STOPV.toString());
+          } else if (barRatioHigh > exhaustionRatio) {
+            aboveSignals.append("\n");
+            aboveSignals.append(Signals.EXH.toString());
+          }
+        }
+      } else if (upBar) {
+        if (bidsAtLow <= exhaustionUpperBound) {
+          belowSignals.append("\n");
+          belowSignals.append(Signals.EXH.toString());
+        } else if (bidsAtLow > 0) {
+          double barRatioLow = (bidsAtPenultimateLow * 1.0)/(bidsAtLow * 1.0);
+          if (barRatioLow < stoppingVolumeRatio) {
+            belowSignals.append("\n");
+            belowSignals.append(Signals.STOPV.toString());
+          } else if (barRatioLow > exhaustionRatio) {
+            belowSignals.append("\n");
+            belowSignals.append(Signals.EXH.toString());
+          }
+        }
       }
 
       // delta rising/falling
@@ -262,14 +344,14 @@ public class VGFDeltaExtras extends Study
       }
       
       if (aboveSignals.length() > 0) {
-        Coordinate c = new Coordinate(sTime, high + (2 * minTickSize));
+        Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
         Label l = new Label(c, aboveSignals.toString());
         l.setStackPolicy(StackPolicy.HCENTER);
         addFigure(l);
       }
 
       if (belowSignals.length() > 0) {
-        Coordinate c = new Coordinate(sTime, low - (2 * minTickSize));
+        Coordinate c = new Coordinate(sTime, low - (3 * minTickSize));
         Label l = new Label(c, belowSignals.toString());
         l.setStackPolicy(StackPolicy.HCENTER);
         addFigure(l);
