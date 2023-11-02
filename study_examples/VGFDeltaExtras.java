@@ -1,8 +1,12 @@
 package study_examples;
 
 import java.awt.Color;
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.motivewave.platform.sdk.common.*;
+import com.motivewave.platform.sdk.common.Enums.Position;
 import com.motivewave.platform.sdk.common.Enums.StackPolicy;
 import com.motivewave.platform.sdk.common.desc.*;
 import com.motivewave.platform.sdk.draw.*;
@@ -19,7 +23,7 @@ import com.motivewave.platform.sdk.study.*;
  studyOverlay=false)
 public class VGFDeltaExtras extends Study
 {
-  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL };
+  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL, POC };
 
   enum Names 
   { 
@@ -43,7 +47,10 @@ public class VGFDeltaExtras extends Study
     DOJIWICKMINPERC, 
     STOPVRATIO, 
     EXHRRATIO, 
-    EXHMAX 
+    EXHMAX,
+    POCGU,
+    POCGD,
+    DTRAP 
   };
 
   enum Signals {
@@ -56,7 +63,8 @@ public class VGFDeltaExtras extends Study
     EXH,
     ZR,
     DIV,
-    STOPV // stopping volume
+    STOPV, // stopping volume
+    POCG
   }
 
   @Override
@@ -89,7 +97,7 @@ public class VGFDeltaExtras extends Study
 
     SettingGroup bp = new SettingGroup("B vs P Volume Profile");
     bp.addRow
-      (new MarkerDescriptor(Names.BPVOL.toString(), "Marker", Enums.MarkerType.SQUARE, Enums.Size.MEDIUM, Color.GRAY, Color.GRAY, true, true)
+      (new MarkerDescriptor(Names.BPVOL.toString(), "Marker", Enums.MarkerType.SQUARE, Enums.Size.LARGE, Color.GRAY, Color.GRAY, true, true)
       ,(new IntegerDescriptor(Names.BPVOLOFFSET.toString(), "Offset", 0, 0, 10, 1)));
     
     bp.addRow(new IntegerDescriptor(Names.BPVOLTHRESH.toString(), "Volume %", 62, 1, 100, 1));
@@ -102,6 +110,9 @@ public class VGFDeltaExtras extends Study
     others.addRow(new DoubleDescriptor(Names.STOPVRATIO.toString(), "Stopping Volume Ratio", 0.7, 0, 1, .01));
     others.addRow(new IntegerDescriptor(Names.EXHRRATIO.toString(), "Exhaustion Ratio", 30, 2, 100, 1));
     others.addRow(new IntegerDescriptor(Names.EXHMAX.toString(), "Exhaustion Max", 10, 2, 100, 1));
+    others.addRow(new IntegerDescriptor(Names.DTRAP.toString(), "Delta Trap", 200, 100, 10000, 100));
+    others.addRow(new MarkerDescriptor(Names.POCGU.toString(), "POC Gap Up", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.POCGD.toString(), "POC Gap Down", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.RED, Color.RED, true, true));
     tab.addGroup(others);
     // colors.addRow(new FontDescriptor(Names.PDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.GREEN, true));
     // colors.addRow(new FontDescriptor(Names.NDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.RED, true));
@@ -111,6 +122,7 @@ public class VGFDeltaExtras extends Study
     desc.exportValue(new ValueDescriptor(Values.DELTACLOSE, "Delta Close", null));
     desc.exportValue(new ValueDescriptor(Values.DELTAMIN, "Delta Min", null));
     desc.exportValue(new ValueDescriptor(Values.DELTAMAX, "Delta Max", null));
+    desc.exportValue(new ValueDescriptor(Values.POC, "POC", null));
     // desc.exportValue(new ValueDescriptor(Values.HQVOL, "Upper Vol %", null));
     // desc.exportValue(new ValueDescriptor(Values.LQVOL, "Lower Vol %", null));
     // desc.exportValue(new ValueDescriptor(Values.BHVOL, "Bid High Vol", null));
@@ -165,11 +177,13 @@ public class VGFDeltaExtras extends Study
 
     DeltaCalculator dc = new DeltaCalculator(highQuantilePrice, lowQuantilePrice, high, low, minTickSize);
     series.getInstrument().forEachTick(sTime, eTime, true, dc);
-    series.getInstrument().forEachTick(ctx.getDataSeries().getStartTime(index), ctx.getDataSeries().getEndTime(index), true, myTickOperator);
 
     series.setInt(index, Values.DELTACLOSE, dc.deltaClose);
     series.setInt(index, Values.DELTAMIN, dc.deltaMin);
     series.setInt(index, Values.DELTAMAX, dc.deltaMax);
+
+    float poc = dc.getPOC();
+    series.setFloat(index, Values.POC, poc);
 
     // series.setInt(index, Values.AHVOL, asksAtHigh);
     // series.setInt(index, Values.ALVOL, asksAtLow);
@@ -312,19 +326,48 @@ public class VGFDeltaExtras extends Study
         aboveSignals.append("\n-");
         aboveSignals.append(Signals.DIV.toString());
       }
-      
-      if (aboveSignals.length() > 0) {
-        Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
-        Label l = new Label(c, aboveSignals.toString());
-        l.setStackPolicy(StackPolicy.HCENTER);
-        addFigure(l);
+
+      if (upBar && poc > series.getHigh(index - 1)) {
+        addFigure(new Marker(new Coordinate(sTime, poc), Position.CENTER, getSettings().getMarker(Names.POCGU.toString())));
+      } else if (downBar && poc < series.getLow(index - 1)) {
+        addFigure(new Marker(new Coordinate(sTime, poc), Position.CENTER, getSettings().getMarker(Names.POCGD.toString())));
       }
 
-      if (belowSignals.length() > 0) {
-        Coordinate c = new Coordinate(sTime, low - (3 * minTickSize));
-        Label l = new Label(c, belowSignals.toString());
-        l.setStackPolicy(StackPolicy.HCENTER);
-        addFigure(l);
+      double requiredGapUpOrDown = 4 * minTickSize;
+      Float priorPOC = series.getFloat(index-1, Values.POC);
+      if (priorPOC != null) {
+        int deltaTrapMin = getSettings().getInteger(Names.DTRAP.toString());
+        var anteDelta = series.getInt(index-2, Values.DELTACLOSE);
+        if (anteDelta < (-1 * deltaTrapMin) && (priorDeltaClose + dc.deltaClose + anteDelta) > 0 &&
+            series.getClose(index-2) < series.getOpen(index-2) &&
+            series.getClose(index-1) > series.getOpen(index-1) && priorDeltaClose > 0 && 
+            upBar && dc.deltaClose > 0 &&
+            poc > (priorPOC + requiredGapUpOrDown)) {
+          belowSignals.append("\n");
+          belowSignals.append(Signals.TRAP.toString());
+        } else if (anteDelta > deltaTrapMin && 
+            (priorDeltaClose + dc.deltaClose + anteDelta) < 0 &&
+            series.getClose(index-2) > series.getOpen(index-2) &&
+            series.getClose(index-1) < series.getOpen(index-1) && priorDeltaClose < 0 &&
+            downBar && dc.deltaClose < 0 &&
+            poc < (priorPOC - requiredGapUpOrDown)) {
+          aboveSignals.append("\n");
+          aboveSignals.append(Signals.TRAP.toString());
+        }
+        
+        if (aboveSignals.length() > 0) {
+          Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
+          Label l = new Label(c, aboveSignals.toString());
+          l.setStackPolicy(StackPolicy.HCENTER);
+          addFigure(l);
+        }
+
+        if (belowSignals.length() > 0) {
+          Coordinate c = new Coordinate(sTime, low - (3 * minTickSize));
+          Label l = new Label(c, belowSignals.toString());
+          l.setStackPolicy(StackPolicy.HCENTER);
+          addFigure(l);
+        }
       }
     }
 
@@ -387,6 +430,17 @@ public class VGFDeltaExtras extends Study
       _high = high;
       _low = low;
       _minTickSize = minTickSize;
+      _priceVolume = new ConcurrentHashMap<>();
+    }
+
+    Map<Float, Integer> _priceVolume;
+
+    public float getPOC() {
+      if (_priceVolume.size() > 0) {
+        return Collections.max(_priceVolume.entrySet(), Map.Entry.comparingByValue()).getKey();
+      } 
+
+      return 0;
     }
 
     @Override
@@ -404,6 +458,9 @@ public class VGFDeltaExtras extends Study
       asksAtHigh += t.getPrice() == _high && isAsk ? tv : 0;
       asksAtPenultimateHigh += t.getPrice() == (_high - _minTickSize) && isAsk ? tv : 0; 
       asksAtLow += t.getPrice() == _low && isAsk ? tv : 0; 
+
+      float priceLevel = t.getPrice();
+      _priceVolume.put(priceLevel, _priceVolume.getOrDefault(priceLevel, 0) + tv);
     }
   }
 
