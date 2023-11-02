@@ -1,7 +1,6 @@
 package study_examples;
 
 import java.awt.Color;
-import java.util.List;
 
 import com.motivewave.platform.sdk.common.*;
 import com.motivewave.platform.sdk.common.Enums.StackPolicy;
@@ -40,8 +39,8 @@ public class VGFDeltaExtras extends Study
     FLIPTHRESH, 
     DOJIUP, 
     DOJIDOWN, 
-    DOJIBODY, 
-    DOJITAIL, 
+    DOJIBODYMAXPERC, 
+    DOJIWICKMINPERC, 
     STOPVRATIO, 
     EXHRRATIO, 
     EXHMAX 
@@ -84,8 +83,8 @@ public class VGFDeltaExtras extends Study
     SettingGroup doji = new SettingGroup("Doji");
     doji.addRow(new ColorDescriptor(Names.DOJIUP.toString(), "Doji Up Color", new Color(178, 255, 178)));
     doji.addRow(new ColorDescriptor(Names.DOJIDOWN.toString(), "Doji Down Color", new Color(255, 178, 178)));
-    doji.addRow(new IntegerDescriptor(Names.DOJIBODY.toString(), "Doji Body Max %", 40, 1, 100, 1));
-    doji.addRow(new IntegerDescriptor(Names.DOJITAIL.toString(), "Doji Wick Min %", 10, 1, 100, 1));
+    doji.addRow(new IntegerDescriptor(Names.DOJIBODYMAXPERC.toString(), "Doji Body Max %", 40, 1, 100, 1));
+    doji.addRow(new IntegerDescriptor(Names.DOJIWICKMINPERC.toString(), "Doji Wick Min %", 10, 1, 100, 1));
     tab.addGroup(doji);
 
     SettingGroup bp = new SettingGroup("B vs P Volume Profile");
@@ -99,7 +98,7 @@ public class VGFDeltaExtras extends Study
 
     SettingGroup others = new SettingGroup("Others");
     others.addRow(new IntegerDescriptor(Names.RISEFALLBARS.toString(), "N Bars for Rise/Fall", 4, 3, 10, 1));
-    others.addRow(new IntegerDescriptor(Names.FLIPTHRESH.toString(), "Flip Tolerance %", 20, 1, 100, 1));
+    others.addRow(new IntegerDescriptor(Names.FLIPTHRESH.toString(), "Flip Tolerance %", 5, 1, 100, 1));
     others.addRow(new DoubleDescriptor(Names.STOPVRATIO.toString(), "Stopping Volume Ratio", 0.7, 0, 1, .01));
     others.addRow(new IntegerDescriptor(Names.EXHRRATIO.toString(), "Exhaustion Ratio", 30, 2, 100, 1));
     others.addRow(new IntegerDescriptor(Names.EXHMAX.toString(), "Exhaustion Max", 10, 2, 100, 1));
@@ -107,15 +106,13 @@ public class VGFDeltaExtras extends Study
     // colors.addRow(new FontDescriptor(Names.PDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.GREEN, true));
     // colors.addRow(new FontDescriptor(Names.NDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.RED, true));
 
-    
-
     RuntimeDescriptor desc = new RuntimeDescriptor();
     setRuntimeDescriptor(desc);
     desc.exportValue(new ValueDescriptor(Values.DELTACLOSE, "Delta Close", null));
     desc.exportValue(new ValueDescriptor(Values.DELTAMIN, "Delta Min", null));
     desc.exportValue(new ValueDescriptor(Values.DELTAMAX, "Delta Max", null));
-    desc.exportValue(new ValueDescriptor(Values.HQVOL, "Upper Vol %", null));
-    desc.exportValue(new ValueDescriptor(Values.LQVOL, "Lower Vol %", null));
+    // desc.exportValue(new ValueDescriptor(Values.HQVOL, "Upper Vol %", null));
+    // desc.exportValue(new ValueDescriptor(Values.LQVOL, "Lower Vol %", null));
     // desc.exportValue(new ValueDescriptor(Values.BHVOL, "Bid High Vol", null));
     // desc.exportValue(new ValueDescriptor(Values.AHVOL, "Ask High Vol", null));
     // desc.exportValue(new ValueDescriptor(Values.BLVOL, "Bid Low Vol", null));
@@ -133,7 +130,6 @@ public class VGFDeltaExtras extends Study
 
     int barLimit = getSettings().getInteger(Names.MAXBARS.toString());
     int startingIndex = seriesSize - barLimit - 1;
-
     if (index < startingIndex) return;
   
     long sTime = series.getStartTime(index);
@@ -151,9 +147,9 @@ public class VGFDeltaExtras extends Study
     var r = series.getRange(index);
 
     if (body != 0) {
-      var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODY.toString()) / 100.0;
-      var dojiTailThresholdPerc = getSettings().getInteger(Names.DOJITAIL.toString()) / 100.0;
-      if (body < (r * dojiBodyThresholdPerc) && tail > r * dojiTailThresholdPerc && nose > r * dojiTailThresholdPerc) {
+      var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODYMAXPERC.toString()) / 100.0;
+      var dojiWickThresholdPerc = getSettings().getInteger(Names.DOJIWICKMINPERC.toString()) / 100.0;
+      if (body < (r * dojiBodyThresholdPerc) && tail > r * dojiWickThresholdPerc && nose > r * dojiWickThresholdPerc) {
         if (upBar) {
           series.setPriceBarColor(index, getSettings().getColor(Names.DOJIUP.toString()));
         } else if (downBar) {
@@ -162,44 +158,18 @@ public class VGFDeltaExtras extends Study
       }
     }
     
-    long lowQuantileVolume = 0;
-    long highQuantileVolume = 0;
-    int minDelta = 0;
-    int maxDelta = 0;      
-    int deltaVolume = 0;
-    int bidsAtHigh = 0;
-    int bidsAtPenultimateLow = 0;
-    int bidsAtLow = 0;
-    int asksAtHigh = 0;
-    int asksAtLow = 0;
-    int asksAtPenultimateHigh = 0;
-    
     float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString())/100.0f;
     var highQuantilePrice = high - (r * topBottomRangePerc);
     var lowQuantilePrice = low + (r * topBottomRangePerc);
     var minTickSize = series.getInstrument().getTickSize();
 
-    List<Tick> ts = series.getInstrument().getTicks(sTime, eTime);
-    for (int i = 0; i < ts.size(); i++) {
-      Tick t = ts.get(i);
-      int tv = t.getVolume();
-      boolean isAsk = t.isAskTick();
-      deltaVolume += tv * (isAsk ? 1 : -1);
-      highQuantileVolume += t.getPrice() > highQuantilePrice ? tv : 0;
-      lowQuantileVolume += t.getPrice() < lowQuantilePrice ? tv : 0;
-      minDelta = Math.min(deltaVolume, minDelta);      
-      maxDelta = Math.max(deltaVolume, maxDelta);
-      bidsAtHigh += t.getPrice() == high && !isAsk ? tv : 0;
-      bidsAtLow += t.getPrice() == low && !isAsk ? tv : 0;
-      bidsAtPenultimateLow += t.getPrice() == (low + minTickSize) && !isAsk ? tv : 0;
-      asksAtHigh += t.getPrice() == high && isAsk ? tv : 0;
-      asksAtPenultimateHigh += t.getPrice() == (high - minTickSize) && isAsk ? tv : 0; 
-      asksAtLow += t.getPrice() == low && isAsk ? tv : 0; 
-    }
+    DeltaCalculator dc = new DeltaCalculator(highQuantilePrice, lowQuantilePrice, high, low, minTickSize);
+    series.getInstrument().forEachTick(sTime, eTime, true, dc);
+    series.getInstrument().forEachTick(ctx.getDataSeries().getStartTime(index), ctx.getDataSeries().getEndTime(index), true, myTickOperator);
 
-    series.setInt(index, Values.DELTACLOSE, deltaVolume);
-    series.setInt(index, Values.DELTAMIN, minDelta);
-    series.setInt(index, Values.DELTAMAX, maxDelta);
+    series.setInt(index, Values.DELTACLOSE, dc.deltaClose);
+    series.setInt(index, Values.DELTAMIN, dc.deltaMin);
+    series.setInt(index, Values.DELTAMAX, dc.deltaMax);
 
     // series.setInt(index, Values.AHVOL, asksAtHigh);
     // series.setInt(index, Values.ALVOL, asksAtLow);
@@ -212,10 +182,10 @@ public class VGFDeltaExtras extends Study
     var largeEnoughBar = (r/minTickSize) >= minimumBarRange;
     if (largeEnoughBar) {
       var totalVolume = series.getVolume(index);
-      int hqvolperc = (int)(highQuantileVolume * 100.0 / totalVolume + 0.5);
-      int lqvolperc = (int)(lowQuantileVolume * 100.0 / totalVolume + 0.5);
-      series.setInt(index, Values.HQVOL, hqvolperc);
-      series.setInt(index, Values.LQVOL, lqvolperc);
+      int hqvolperc = (int)(dc.highQuantileVolume * 100.0 / totalVolume + 0.5);
+      int lqvolperc = (int)(dc.lowQuantileVolume * 100.0 / totalVolume + 0.5);
+      // series.setInt(index, Values.HQVOL, hqvolperc);
+      // series.setInt(index, Values.LQVOL, lqvolperc);
 
       int volThreshold = getSettings().getInteger(Names.BPVOLTHRESH.toString());
       if (hqvolperc > volThreshold || lqvolperc > volThreshold) {
@@ -228,12 +198,12 @@ public class VGFDeltaExtras extends Study
         addFigure(m);
       }
 
+      // delta divergence (bar level)
       Color upBidColor = getSettings().getColor(Names.UPBID.toString());
       Color downAskColor = getSettings().getColor(Names.DOWNASK.toString());
-      
-      if (upBar && deltaVolume < 0) {
+      if (upBar && dc.deltaClose < 0) {
         series.setPriceBarColor(index, upBidColor);
-      } else if (downBar && deltaVolume > 0) {
+      } else if (downBar && dc.deltaClose > 0) {
         series.setPriceBarColor(index, downAskColor);
       }
 
@@ -243,12 +213,12 @@ public class VGFDeltaExtras extends Study
       // zero prints
       // N-0 on highs
       // 0-N on lows
-      if (bidsAtHigh > 0 && asksAtHigh == 0) {
+      if (dc.bidsAtHigh > 0 && dc.asksAtHigh == 0) {
         aboveSignals.append("\n");
         aboveSignals.append(Signals.ZR.toString());
       }
 
-      if (bidsAtLow == 0 && asksAtLow > 0) {
+      if (dc.bidsAtLow == 0 && dc.asksAtLow > 0) {
         belowSignals.append("\n");
         belowSignals.append(Signals.ZR.toString());
       }
@@ -261,18 +231,18 @@ public class VGFDeltaExtras extends Study
       // todo: better calculation of percentage so we can record actual value for fine tuning during backtest
       // ((max-close)/range)*100 upper percentage
       // (1-((min+close)/range))*100 lower percentage
-      if ((priorDeltaClose > 0 && deltaVolume < 0) || (priorDeltaClose < 0 && deltaVolume > 0)) {
+      if ((priorDeltaClose > 0 && dc.deltaClose < 0) || (priorDeltaClose < 0 && dc.deltaClose > 0)) {
         int flipThreshold = getSettings().getInteger(Names.FLIPTHRESH.toString());
         var boundRatio = flipThreshold / 100.0;
         var priorBoundSize = Math.abs(priorDeltaMax - priorDeltaMin) * boundRatio;
-        var currentBoundSize = Math.abs(maxDelta - minDelta) * boundRatio;
-        if (priorDeltaClose > (priorDeltaMax - priorBoundSize) && deltaVolume < (minDelta + currentBoundSize)) {
+        var currentBoundSize = Math.abs(dc.deltaMax - dc.deltaMin) * boundRatio;
+        if (priorDeltaClose > (priorDeltaMax - priorBoundSize) && dc.deltaClose < (dc.deltaMin + currentBoundSize)) {
           aboveSignals.append("\n");
-          var flipType = (priorDeltaMin == 0 ? Signals.FLIPX : ((deltaVolume == minDelta) && priorDeltaClose == priorDeltaMax) ? Signals.FLIP : Signals.FL).toString();
+          var flipType = (priorDeltaMin == 0 ? Signals.FLIPX : ((dc.deltaClose == dc.deltaMin) && priorDeltaClose == priorDeltaMax) ? Signals.FLIP : Signals.FL).toString();
           aboveSignals.append(flipType);
-        } else if (priorDeltaClose < (priorDeltaMin + priorBoundSize) && deltaVolume > (maxDelta - currentBoundSize)) {
+        } else if (priorDeltaClose < (priorDeltaMin + priorBoundSize) && dc.deltaClose > (dc.deltaMax - currentBoundSize)) {
           belowSignals.append("\n");
-          var flipType = (priorDeltaMax == 0 ? Signals.FLIPX : ((deltaVolume == maxDelta) && priorDeltaClose == priorDeltaMin) ? Signals.FLIP : Signals.FL).toString();
+          var flipType = (priorDeltaMax == 0 ? Signals.FLIPX : ((dc.deltaClose == dc.deltaMax) && priorDeltaClose == priorDeltaMin) ? Signals.FLIP : Signals.FL).toString();
           belowSignals.append(flipType);
         }
       }
@@ -282,11 +252,11 @@ public class VGFDeltaExtras extends Study
       var exhaustionRatio = getSettings().getInteger(Names.EXHRRATIO.toString());
       int exhaustionUpperBound = getSettings().getInteger(Names.EXHMAX.toString());
       if (downBar) {
-        if (asksAtHigh <= exhaustionUpperBound) {
+        if (dc.asksAtHigh <= exhaustionUpperBound) {
           aboveSignals.append("\n");
           aboveSignals.append(Signals.EXH.toString());
-        } else if (asksAtHigh > 0) {
-          double barRatioHigh = (asksAtPenultimateHigh * 1.0)/(asksAtHigh * 1.0);
+        } else if (dc.asksAtHigh > 0) {
+          double barRatioHigh = (dc.asksAtPenultimateHigh * 1.0)/(dc.asksAtHigh * 1.0);
           // debug(sTime, String.format("%,.2f", barRatioHigh));
           if (barRatioHigh < stoppingVolumeRatio) {
             aboveSignals.append("\n");
@@ -297,11 +267,11 @@ public class VGFDeltaExtras extends Study
           }
         }
       } else if (upBar) {
-        if (bidsAtLow <= exhaustionUpperBound) {
+        if (dc.bidsAtLow <= exhaustionUpperBound) {
           belowSignals.append("\n");
           belowSignals.append(Signals.EXH.toString());
-        } else if (bidsAtLow > 0) {
-          double barRatioLow = (bidsAtPenultimateLow * 1.0)/(bidsAtLow * 1.0);
+        } else if (dc.bidsAtLow > 0) {
+          double barRatioLow = (dc.bidsAtPenultimateLow * 1.0)/(dc.bidsAtLow * 1.0);
           if (barRatioLow < stoppingVolumeRatio) {
             belowSignals.append("\n");
             belowSignals.append(Signals.STOPV.toString());
@@ -335,10 +305,10 @@ public class VGFDeltaExtras extends Study
       // delta divergence
       // todo: define large enough deltaVolume (maybe based on average and stdev but caution about extra processing so maybe static number based on analysis)
       // todo: maybe consider only if prior bar is down as well (needs testing)
-      if (recentLow > low && upBar && deltaVolume > 0) {
+      if (recentLow > low && upBar && dc.deltaClose > 0) {
         belowSignals.append("\n+");
         belowSignals.append(Signals.DIV.toString());
-      } else if (recentHigh < high && downBar && deltaVolume < 0) {
+      } else if (recentHigh < high && downBar && dc.deltaClose < 0) {
         aboveSignals.append("\n-");
         aboveSignals.append(Signals.DIV.toString());
       }
@@ -389,6 +359,52 @@ public class VGFDeltaExtras extends Study
       } else {
           return Direction.Inconsistent;
       }
+  }
+
+  public class DeltaCalculator implements TickOperation {
+
+    long lowQuantileVolume = 0;
+    long highQuantileVolume = 0;
+    int deltaMin = 0;
+    int deltaMax = 0;      
+    int deltaClose = 0;
+    int bidsAtHigh = 0;
+    int bidsAtPenultimateLow = 0;
+    int bidsAtLow = 0;
+    int asksAtHigh = 0;
+    int asksAtLow = 0;
+    int asksAtPenultimateHigh = 0;
+
+    private float _highQuantilePrice = 0;
+    private float _lowQuantilePrice = 0;
+    private float _high = 0;
+    private float _low = 0;
+    private double _minTickSize = 0;
+
+    public DeltaCalculator(float hqPrice, float lqPrice, float high, float low, double minTickSize) {
+      _highQuantilePrice = hqPrice;
+      _lowQuantilePrice = lqPrice;
+      _high = high;
+      _low = low;
+      _minTickSize = minTickSize;
+    }
+
+    @Override
+    public void onTick(Tick t) {
+      int tv = t.getVolume();
+      boolean isAsk = t.isAskTick();
+      deltaClose += tv * (isAsk ? 1 : -1);
+      highQuantileVolume += t.getPrice() > _highQuantilePrice ? tv : 0;
+      lowQuantileVolume += t.getPrice() < _lowQuantilePrice ? tv : 0;
+      deltaMin = Math.min(deltaClose, deltaMin);      
+      deltaMax = Math.max(deltaClose, deltaMax);
+      bidsAtHigh += t.getPrice() == _high && !isAsk ? tv : 0;
+      bidsAtLow += t.getPrice() == _low && !isAsk ? tv : 0;
+      bidsAtPenultimateLow += t.getPrice() == (_low + _minTickSize) && !isAsk ? tv : 0;
+      asksAtHigh += t.getPrice() == _high && isAsk ? tv : 0;
+      asksAtPenultimateHigh += t.getPrice() == (_high - _minTickSize) && isAsk ? tv : 0; 
+      asksAtLow += t.getPrice() == _low && isAsk ? tv : 0; 
+    }
   }
 
   enum Direction { Rise, Fall, Inconsistent }
