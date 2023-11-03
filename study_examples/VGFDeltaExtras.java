@@ -50,7 +50,11 @@ public class VGFDeltaExtras extends Study
     EXHMAX,
     POCGU,
     POCGD,
-    DTRAP 
+    DTRAP,
+    UPTREND_UP,
+    UPTREND_DOWN,
+    DOWNTREND_UP, 
+    DOWNTREND_DOWN
   };
 
   enum Signals {
@@ -82,18 +86,18 @@ public class VGFDeltaExtras extends Study
     general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 8, 1, 10, 1));
     tab.addGroup(general);
 
+    SettingGroup barColor = new SettingGroup("Trend based Bar Color");
+    barColor.addRow(new ColorDescriptor(Names.UPTREND_UP.toString(), "Uptrend Up", new Color(0, 255, 0)));
+    barColor.addRow(new ColorDescriptor(Names.UPTREND_DOWN.toString(), "Uptrend Down", new Color(0, 128, 128)));
+    barColor.addRow(new ColorDescriptor(Names.DOWNTREND_UP.toString(), "Downtrend Up", new Color(165, 42, 42)));
+    barColor.addRow(new ColorDescriptor(Names.DOWNTREND_DOWN.toString(), "Downtrend Down", new Color(255, 0, 0)));
+    tab.addGroup(barColor);
+
     SettingGroup divergence = new SettingGroup("Divergence");
     divergence.addRow(new ColorDescriptor(Names.UPBID.toString(), "Up/@Bid Color", Color.CYAN));
     divergence.addRow(new ColorDescriptor(Names.DOWNASK.toString(), "Down/@Ask Color", Color.MAGENTA));
     divergence.addRow(new IntegerDescriptor(Names.DDIVLOOKBACK.toString(), "Lookback for Recent H/L", 5, 2, 50, 1));
     tab.addGroup(divergence);
-
-    SettingGroup doji = new SettingGroup("Doji");
-    doji.addRow(new ColorDescriptor(Names.DOJIUP.toString(), "Doji Up Color", new Color(178, 255, 178)));
-    doji.addRow(new ColorDescriptor(Names.DOJIDOWN.toString(), "Doji Down Color", new Color(255, 178, 178)));
-    doji.addRow(new IntegerDescriptor(Names.DOJIBODYMAXPERC.toString(), "Doji Body Max %", 40, 1, 100, 1));
-    doji.addRow(new IntegerDescriptor(Names.DOJIWICKMINPERC.toString(), "Doji Wick Min %", 10, 1, 100, 1));
-    tab.addGroup(doji);
 
     SettingGroup bp = new SettingGroup("B vs P Volume Profile");
     bp.addRow
@@ -112,10 +116,8 @@ public class VGFDeltaExtras extends Study
     others.addRow(new IntegerDescriptor(Names.EXHMAX.toString(), "Exhaustion Max", 10, 2, 100, 1));
     others.addRow(new IntegerDescriptor(Names.DTRAP.toString(), "Delta Trap", 200, 100, 10000, 100));
     others.addRow(new MarkerDescriptor(Names.POCGU.toString(), "POC Gap Up", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
-    others.addRow(new MarkerDescriptor(Names.POCGD.toString(), "POC Gap Down", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.RED, Color.RED, true, true));
+    others.addRow(new MarkerDescriptor(Names.POCGD.toString(), "POC Gap Down", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.RED.darker(), Color.RED.darker(), true, true));
     tab.addGroup(others);
-    // colors.addRow(new FontDescriptor(Names.PDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.GREEN, true));
-    // colors.addRow(new FontDescriptor(Names.NDELTA.toString(), "Positive Delta", new Font("Courier New", Font.BOLD, 12), Color.RED, true));
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
     setRuntimeDescriptor(desc);
@@ -153,23 +155,17 @@ public class VGFDeltaExtras extends Study
     boolean upBar = close > open;
     boolean downBar = close < open;
 
-    var body = Math.abs(close - open);
-    var tail = Math.min(open, close) - low;
-    var nose = high - Math.max(open, close);
-    var r = series.getRange(index);
-
-    if (body != 0) {
-      var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODYMAXPERC.toString()) / 100.0;
-      var dojiWickThresholdPerc = getSettings().getInteger(Names.DOJIWICKMINPERC.toString()) / 100.0;
-      if (body < (r * dojiBodyThresholdPerc) && tail > r * dojiWickThresholdPerc && nose > r * dojiWickThresholdPerc) {
-        if (upBar) {
-          series.setPriceBarColor(index, getSettings().getColor(Names.DOJIUP.toString()));
-        } else if (downBar) {
-          series.setPriceBarColor(index, getSettings().getColor(Names.DOJIDOWN.toString()));
-        }
+    int smaPeriod = 105; // todo make trend basis configurable (source, period, matype) and plot ourselves too https://docs.motivewave.com/guides/sdk-programming-guide/overlay-example
+    if (index > smaPeriod) {
+      double trendSMA = series.sma(index, 105, Enums.BarInput.CLOSE);
+      if (close > trendSMA) {
+        series.setPriceBarColor(index, upBar ? getSettings().getColor(Names.UPTREND_UP.toString()) : getSettings().getColor(Names.UPTREND_DOWN.toString()));
+      } else {
+        series.setPriceBarColor(index, upBar ? getSettings().getColor(Names.DOWNTREND_UP.toString()) : getSettings().getColor(Names.DOWNTREND_DOWN.toString()));
       }
     }
-    
+
+    var r = series.getRange(index);
     float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString())/100.0f;
     var highQuantilePrice = high - (r * topBottomRangePerc);
     var lowQuantilePrice = low + (r * topBottomRangePerc);
@@ -313,18 +309,20 @@ public class VGFDeltaExtras extends Study
       }
 
       int newXLookback = getSettings().getInteger(Names.DDIVLOOKBACK.toString());
-      double recentHigh = series.highest(index-1, newXLookback, Enums.BarInput.HIGH);
-      double recentLow = series.lowest(index-1, newXLookback, Enums.BarInput.LOW);
+      if (index > newXLookback + 1) {
+        double recentHigh = series.highest(index-1, newXLookback, Enums.BarInput.HIGH);
+        double recentLow = series.lowest(index-1, newXLookback, Enums.BarInput.LOW);
 
-      // delta divergence
-      // todo: define large enough deltaVolume (maybe based on average and stdev but caution about extra processing so maybe static number based on analysis)
-      // todo: maybe consider only if prior bar is down as well (needs testing)
-      if (recentLow > low && upBar && dc.deltaClose > 0) {
-        belowSignals.append("\n+");
-        belowSignals.append(Signals.DIV.toString());
-      } else if (recentHigh < high && downBar && dc.deltaClose < 0) {
-        aboveSignals.append("\n-");
-        aboveSignals.append(Signals.DIV.toString());
+        // delta divergence
+        // todo: define large enough deltaVolume (maybe based on average and stdev but caution about extra processing so maybe static number based on analysis)
+        // todo: maybe consider only if prior bar is down as well (needs testing)
+        if (recentLow > low && upBar && dc.deltaClose > 0) {
+          belowSignals.append("\n+");
+          belowSignals.append(Signals.DIV.toString());
+        } else if (recentHigh < high && downBar && dc.deltaClose < 0) {
+          aboveSignals.append("\n-");
+          aboveSignals.append(Signals.DIV.toString());
+        }
       }
 
       if (upBar && poc > series.getHigh(index - 1)) {
