@@ -41,8 +41,7 @@ public class VGFDeltaExtras extends Study
     RISEFALLBARS, 
     DDIVLOOKBACK, 
     FLIPTHRESH, 
-    DOJIUP, 
-    DOJIDOWN, 
+    DOJIALPHA, 
     DOJIBODYMAXPERC, 
     DOJIWICKMINPERC, 
     STOPVRATIO, 
@@ -54,7 +53,9 @@ public class VGFDeltaExtras extends Study
     UPTREND_UP,
     UPTREND_DOWN,
     DOWNTREND_UP, 
-    DOWNTREND_DOWN
+    DOWNTREND_DOWN,
+    UPMARKERS,
+    DOWNMARKERS
   };
 
   enum Signals {
@@ -92,6 +93,12 @@ public class VGFDeltaExtras extends Study
     barColor.addRow(new ColorDescriptor(Names.DOWNTREND_UP.toString(), "Downtrend Up", new Color(165, 42, 42)));
     barColor.addRow(new ColorDescriptor(Names.DOWNTREND_DOWN.toString(), "Downtrend Down", new Color(255, 0, 0)));
     tab.addGroup(barColor);
+    
+    SettingGroup doji = new SettingGroup("Doji");
+    doji.addRow(new IntegerDescriptor(Names.DOJIALPHA.toString(), "Color Alpha", 100, 0, 255, 1));
+    doji.addRow(new IntegerDescriptor(Names.DOJIBODYMAXPERC.toString(), "Body Max %", 40, 1, 100, 1));
+    doji.addRow(new IntegerDescriptor(Names.DOJIWICKMINPERC.toString(), "Wick Min %", 10, 1, 100, 1));
+    tab.addGroup(doji);
 
     SettingGroup divergence = new SettingGroup("Divergence");
     divergence.addRow(new ColorDescriptor(Names.UPBID.toString(), "Up/@Bid Color", Color.CYAN));
@@ -117,6 +124,10 @@ public class VGFDeltaExtras extends Study
     others.addRow(new IntegerDescriptor(Names.DTRAP.toString(), "Delta Trap", 200, 100, 10000, 100));
     others.addRow(new MarkerDescriptor(Names.POCGU.toString(), "POC Gap Up", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.POCGD.toString(), "POC Gap Down", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.RED.darker(), Color.RED.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.UPMARKERS.toString(), "Up Markers", Enums.MarkerType.TRIANGLE, Enums.Size.SMALL, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.DOWNMARKERS.toString(), "Down Markers", Enums.MarkerType.TRIANGLE, Enums.Size.SMALL, Color.RED.darker(), Color.RED.darker(), true, true));
+    
+
     tab.addGroup(others);
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
@@ -155,17 +166,30 @@ public class VGFDeltaExtras extends Study
     boolean upBar = close > open;
     boolean downBar = close < open;
 
+    var r = series.getRange(index);
+    var body = Math.abs(close - open);
+    var tail = Math.min(open, close) - low;
+    var nose = high - Math.max(open, close);
+    boolean doji = false;
+    if (body != 0) {
+      var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODYMAXPERC.toString()) / 100.0;
+      var dojiWickThresholdPerc = getSettings().getInteger(Names.DOJIWICKMINPERC.toString()) / 100.0;
+      doji = body < (r * dojiBodyThresholdPerc) && tail > r * dojiWickThresholdPerc && nose > r * dojiWickThresholdPerc;
+    }
+
+    int barColorAlpha = doji ? getSettings().getInteger(Names.DOJIALPHA.toString(), index) : 255;
     int smaPeriod = 105; // todo make trend basis configurable (source, period, matype) and plot ourselves too https://docs.motivewave.com/guides/sdk-programming-guide/overlay-example
     if (index > smaPeriod) {
       double trendSMA = series.sma(index, 105, Enums.BarInput.CLOSE);
       if (close > trendSMA) {
-        series.setPriceBarColor(index, upBar ? getSettings().getColor(Names.UPTREND_UP.toString()) : getSettings().getColor(Names.UPTREND_DOWN.toString()));
+        Color uptrendColor = upBar ? getSettings().getColor(Names.UPTREND_UP.toString()) : getSettings().getColor(Names.UPTREND_DOWN.toString());
+        series.setPriceBarColor(index, new Color(uptrendColor.getRed(), uptrendColor.getGreen(), uptrendColor.getBlue(), barColorAlpha));
       } else {
-        series.setPriceBarColor(index, upBar ? getSettings().getColor(Names.DOWNTREND_UP.toString()) : getSettings().getColor(Names.DOWNTREND_DOWN.toString()));
+        Color downtrendColor = upBar ? getSettings().getColor(Names.DOWNTREND_UP.toString()) : getSettings().getColor(Names.DOWNTREND_DOWN.toString());
+        series.setPriceBarColor(index, new Color(downtrendColor.getRed(), downtrendColor.getGreen(), downtrendColor.getBlue(), barColorAlpha));
       }
     }
 
-    var r = series.getRange(index);
     float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString())/100.0f;
     var highQuantilePrice = high - (r * topBottomRangePerc);
     var lowQuantilePrice = low + (r * topBottomRangePerc);
@@ -355,14 +379,18 @@ public class VGFDeltaExtras extends Study
         
         if (aboveSignals.length() > 0) {
           Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
-          Label l = new Label(c, aboveSignals.toString());
+          addFigure(new Marker(c, Position.TOP, getSettings().getMarker(Names.DOWNMARKERS.toString())));
+          Coordinate c2 = new Coordinate(c.getTime(), c.getValue() + (2 * minTickSize));
+          Label l = new Label(c2, aboveSignals.toString());
           l.setStackPolicy(StackPolicy.HCENTER);
           addFigure(l);
         }
 
         if (belowSignals.length() > 0) {
           Coordinate c = new Coordinate(sTime, low - (3 * minTickSize));
-          Label l = new Label(c, belowSignals.toString());
+          addFigure(new Marker(c, Position.BOTTOM, getSettings().getMarker(Names.UPMARKERS.toString())));
+          Coordinate c2 = new Coordinate(c.getTime(), c.getValue() - minTickSize);
+          Label l = new Label(c2, belowSignals.toString());
           l.setStackPolicy(StackPolicy.HCENTER);
           addFigure(l);
         }
