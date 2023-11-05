@@ -22,8 +22,6 @@ public class Utils {
     }
 
     public static double[] zscore(double[] values) {
-        // double variance = StatUtils.populationVariance(values);
-        // double sd = Math.sqrt(variance);
         double sd = calculateStandardDeviation(values);
         double mean = mean(values);
         double[] r = new double[values.length];
@@ -41,6 +39,10 @@ public class Utils {
             sum += m[i];
         }
         return sum / m.length;
+    }
+
+    public static String formatTwoDecimalPoints(double d) {
+        return String.format("%,.2f", d);
     }
 
     public static double calculateStandardDeviation(double[] array) {
