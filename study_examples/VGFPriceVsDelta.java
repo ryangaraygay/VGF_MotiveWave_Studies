@@ -3,7 +3,6 @@ package study_examples;
 import java.awt.Color;
 
 import com.motivewave.platform.sdk.common.*;
-import com.motivewave.platform.sdk.common.desc.BarDescriptor;
 import com.motivewave.platform.sdk.common.desc.BooleanDescriptor;
 import com.motivewave.platform.sdk.common.desc.GuideDescriptor;
 import com.motivewave.platform.sdk.common.desc.IntegerDescriptor;
@@ -18,8 +17,8 @@ import com.motivewave.platform.sdk.study.*;
 @StudyHeader(
  namespace="org.vgf", 
  id="VGF_PRICE_VS_DELTA", 
- name="VGF Price vs Delta",
- label="VGF Price vs Delta",
+ name="VGF Price-Delta Convergence",
+ label="VGF Price-Delta Convergence",
  desc="",
  menu="VGF Studies",
  overlay=false,
@@ -45,41 +44,25 @@ public class VGFPriceVsDelta extends Study
     general.addRow(new IntegerDescriptor(Names.CONVDIVPERIOD.toString(), "Price vs Delta Conv/Div Period", 21, 5, 200, 1));
     tab.addGroup(general);
 
-    SettingGroup colors = new SettingGroup("Display");
-    // colors.addRow(new BarDescriptor(Values.CONVDIV.toString(), "Price/Delta Convergence", Color.BLUE, true, true));
-    colors.addRow(new PathDescriptor(Values.CONVDIV.toString(), "Price/Delta Convergence", Color.BLUE, 1.0f, null, true, true, false));
-    // colors.addRow(new PathDescriptor(Values.HLTEMA.toString(), "HighLow TEMA", Color.BLUE, 1.0f, null, true, true, false));
-    // colors.addRow(new PathDescriptor(Values.DCTEMA.toString(), "Delta Close TEMA", Color.BLACK, 1.0f, null, true, true, false));
-    // colors.addRow(new BarDescriptor(Values.DCTEMA.toString(), "Delta Close TEMA", Color.PINK, true, true));
-
+    SettingGroup display = new SettingGroup("Display");
+    display.addRow(new PathDescriptor(Values.CONVDIV.toString(), "Price/Delta Convergence", Color.BLUE, 1.0f, null, true, true, false));
     var mg = new GuideDescriptor(Inputs.MIDDLE_GUIDE, get("MIDDLE_GUIDE"), 0, 0, 999.1, .1, true);
     mg.setDash(new float[] {3, 3});
-    colors.addRow(mg);
+    display.addRow(mg);
+    tab.addGroup(display);
 
-    tab.addGroup(colors);
-
-    SettingGroup grp = tab.addGroup(get("SHADING"));
-    grp.addRow(new ShadeDescriptor(Inputs.TOP_FILL, get("TOP_FILL"), Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(),
+    SettingGroup shading = tab.addGroup(get("SHADING"));
+    shading.addRow(new ShadeDescriptor(Inputs.TOP_FILL, get("TOP_FILL"), Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(),
         Enums.ShadeType.ABOVE, defaults.getTopFillColor(), true, true));
-    grp.addRow(new ShadeDescriptor(Inputs.BOTTOM_FILL, get("BOTTOM_FILL"), Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(),
+    shading.addRow(new ShadeDescriptor(Inputs.BOTTOM_FILL, get("BOTTOM_FILL"), Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(),
         Enums.ShadeType.BELOW, defaults.getBottomFillColor(), true, true));
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
     setRuntimeDescriptor(desc);
     desc.exportValue(new ValueDescriptor(Values.DELTACLOSE, "Delta Close", null));
-    desc.exportValue(new ValueDescriptor(Values.CONVDIV, "Con/Di-vergence", null));
-    // desc.exportValue(new ValueDescriptor(Values.HLEMA1, "H/L EMA1", null));
-    // desc.exportValue(new ValueDescriptor(Values.HLEMA2, "H/L EMA2", null));
-    // desc.exportValue(new ValueDescriptor(Values.HLEMA3, "H/L EMA3", null));
-    // desc.exportValue(new ValueDescriptor(Values.DCEMA1, "Delta Close EMA1", null));
-    // desc.exportValue(new ValueDescriptor(Values.DCEMA2, "Delta Close EMA2", null));
-    // desc.exportValue(new ValueDescriptor(Values.DCEMA3, "Delta Close EMA3", null));
     desc.exportValue(new ValueDescriptor(Values.HLTEMA, "HighLow TEMA", null));
     desc.exportValue(new ValueDescriptor(Values.DCTEMA, "Delta Close TEMA", null));
-    // desc.declarePath(Values.HLTEMA, Values.HLTEMA.toString());
-    // desc.declarePath(Values.DCTEMA, Values.DCTEMA.toString());
     desc.declarePath(Values.CONVDIV, Values.CONVDIV.toString());
-    // desc.declareBars(Values.CONVDIV, Values.CONVDIV.toString());
     desc.setRangeKeys(Values.CONVDIV);
   }
 
@@ -98,20 +81,17 @@ public class VGFPriceVsDelta extends Study
 
     long sTime = series.getStartTime(index);
     long eTime = series.getEndTime(index);
-    float high = series.getHigh(index);
-    float low = series.getLow(index);
 
-    var r = series.getRange(index);
-
-    float topBottomRangePerc = 50;
-    var highQuantilePrice = high - (r * topBottomRangePerc);
-    var lowQuantilePrice = low + (r * topBottomRangePerc);
-    var minTickSize = series.getInstrument().getTickSize();
-
-    DeltaCalculator dc = new DeltaCalculator(highQuantilePrice, lowQuantilePrice, high, low, minTickSize);
-    series.getInstrument().forEachTick(sTime, eTime, false, dc);
-
-    series.setInt(index, Values.DELTACLOSE, dc.deltaClose);
+    // attempt to get exported deltaclose value
+    int existingDeltaClose = series.getInt(index, Values.DELTACLOSE);
+    int currentDeltaClose = 0;
+    if (existingDeltaClose == 0) {
+      DeltaCloseCalculator dcc = new DeltaCloseCalculator();
+      series.getInstrument().forEachTick(sTime, eTime, false, dcc);
+      currentDeltaClose = dcc.getDeltaClose();
+      series.setInt(index, Values.DELTACLOSE, currentDeltaClose);
+      series.setComplete(index, Values.DELTACLOSE);
+    }
 
     int period = getSettings().getInteger(Names.CONVDIVPERIOD.toString());
     double alpha = 2.0/((double)period + 1);
@@ -137,7 +117,7 @@ public class VGFPriceVsDelta extends Study
 
     // Triple EMA of delta close
     Double oldDeltaEMA1 = series.getDouble(index - 1, Values.DCEMA1);
-    double newDeltaEMA1 = dc.deltaClose;
+    double newDeltaEMA1 = currentDeltaClose;
     double deltaEMA1 = getEMA(newDeltaEMA1, oldDeltaEMA1, alpha);
     series.setDouble(index, Values.DCEMA1, deltaEMA1);
 
@@ -160,27 +140,27 @@ public class VGFPriceVsDelta extends Study
     int value = upConvergence ? 10 : (downConvergence ? -10 : 0);
     series.setInt(index, Values.CONVDIV, value);
 
-    // // as an alternative, con-div is based on change in TEMA (or maybe even slope - though adds more complexity)
-    // Double priorHLTEMAx = series.getDouble(index-1, Values.HLTEMA);
-    // Double priorDCTEMAx = series.getDouble(index-1, Values.DCTEMA);
-    // if (priorHLTEMAx != null && priorDCTEMAx != null) {
-    //   boolean hltemaUp = hlTEMA > priorHLTEMAx;
-    //   boolean dctemaUp = deltaTEMA > priorDCTEMAx;
-    //   boolean upConvergence = hltemaUp && dctemaUp;
-    //   boolean downConvergence = !hltemaUp && !dctemaUp; // todo consider flat as well though unlikely
-    //   int value = upConvergence ? 10 : (downConvergence ? -10 : 0);
-    //   series.setInt(index, Values.CONVDIV, value);
-    // }
-
     series.setComplete(index);
   }
 
-  public double getEMA(double newValue, Double oldValue, double alpha) {
+  private double getEMA(double newValue, Double oldValue, double alpha) {
     double returnValue = newValue;
     if (oldValue != null) {
       returnValue = oldValue + (alpha * (returnValue - oldValue));
     }
     return returnValue;
+  }
+
+  private class DeltaCloseCalculator implements TickOperation {
+    int deltaClose = 0;
+    public int getDeltaClose() {
+      return deltaClose;
+    }
+
+    @Override
+    public void onTick(Tick t) {
+      deltaClose += t.getVolume() * (t.isAskTick() ? 1 : -1);
+    }    
   }
 
   public void debug(long millisTime, Object... args) {
@@ -199,19 +179,6 @@ public class VGFPriceVsDelta extends Study
       debug(sb.toString());
   }
 }
-
-// add(double x) {
-//     total += x;
-//     addToQueue(x);
-//     if (queueSize > 50) {
-//         total -= removeLastFromQueue();
-//     } else {
-//         count++;
-//     }
-// }
-// double getAverage() {
-//     return total / count;
-// }
 
 /*
 mv VGF_MotiveWave_Studies.jar /Users/ryangaraygay/MotiveWave\ Extensions/
