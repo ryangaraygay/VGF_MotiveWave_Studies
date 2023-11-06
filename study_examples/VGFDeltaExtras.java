@@ -46,10 +46,6 @@ public class VGFDeltaExtras extends Study
     POCGU,
     POCGD,
     DTRAP,
-    UPTREND_UP,
-    UPTREND_DOWN,
-    DOWNTREND_UP, 
-    DOWNTREND_DOWN,
     UPMARKERS,
     DOWNMARKERS,
     EMA1_PERIOD,
@@ -83,15 +79,6 @@ public class VGFDeltaExtras extends Study
     general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 20, 1, 10000, 1));
     general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 8, 1, 10, 1));
     tab.addGroup(general);
-
-    SettingGroup barColor = new SettingGroup("Trend based Bar Color");
-    barColor.addRow(new IntegerDescriptor(Names.EMA1_PERIOD.toString(), "Fast EMA Period", 9, 5, 50, 1));
-    barColor.addRow(new IntegerDescriptor(Names.EMA2_PERIOD.toString(), "Slow EMA Period", 45, 13, 200, 1));
-    barColor.addRow(new ColorDescriptor(Names.UPTREND_UP.toString(), "Uptrend Up", new Color(0, 255, 0)));
-    barColor.addRow(new ColorDescriptor(Names.UPTREND_DOWN.toString(), "Uptrend Down", new Color(0, 128, 128)));
-    barColor.addRow(new ColorDescriptor(Names.DOWNTREND_UP.toString(), "Downtrend Up", new Color(165, 42, 42)));
-    barColor.addRow(new ColorDescriptor(Names.DOWNTREND_DOWN.toString(), "Downtrend Down", new Color(255, 0, 0)));
-    tab.addGroup(barColor);
     
     SettingGroup doji = new SettingGroup("Doji");
     doji.addRow(new IntegerDescriptor(Names.DOJIALPHA.toString(), "Color Alpha", 100, 0, 255, 1));
@@ -168,27 +155,12 @@ public class VGFDeltaExtras extends Study
     var body = Math.abs(close - open);
     var tail = Math.min(open, close) - low;
     var nose = high - Math.max(open, close);
-    boolean doji = false;
     if (body != 0) {
       var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODYMAXPERC.toString()) / 100.0;
       var dojiWickThresholdPerc = getSettings().getInteger(Names.DOJIWICKMINPERC.toString()) / 100.0;
-      doji = body < (r * dojiBodyThresholdPerc) && tail > r * dojiWickThresholdPerc && nose > r * dojiWickThresholdPerc;
-    }
-
-    int barColorAlpha = doji ? getSettings().getInteger(Names.DOJIALPHA.toString(), index) : 255;
-    int ema1Period = getSettings().getInteger(Names.EMA1_PERIOD.toString());
-    int ema2Period = getSettings().getInteger(Names.EMA2_PERIOD.toString());
-    if (index > Math.max(ema1Period, ema2Period)) {
-    // if (index > smaPeriod) {
-      double ema1 = series.ema(index, ema1Period, Enums.BarInput.CLOSE);
-      double ema2 = series.ema(index, ema2Period, Enums.BarInput.CLOSE);
-      // double trendSMA = series.sma(index, smaPeriod, Enums.BarInput.CLOSE);
-      if (ema1 > ema2) {
-        Color uptrendColor = upBar ? getSettings().getColor(Names.UPTREND_UP.toString()) : getSettings().getColor(Names.UPTREND_DOWN.toString());
-        series.setPriceBarColor(index, new Color(uptrendColor.getRed(), uptrendColor.getGreen(), uptrendColor.getBlue(), barColorAlpha));
-      } else {
-        Color downtrendColor = upBar ? getSettings().getColor(Names.DOWNTREND_UP.toString()) : getSettings().getColor(Names.DOWNTREND_DOWN.toString());
-        series.setPriceBarColor(index, new Color(downtrendColor.getRed(), downtrendColor.getGreen(), downtrendColor.getBlue(), barColorAlpha));
+      if (body < (r * dojiBodyThresholdPerc) && tail > r * dojiWickThresholdPerc && nose > r * dojiWickThresholdPerc) {
+        Color defaultBarColor = (close == open) ? ctx.getDefaults().getBarNeutralColor() : upBar ? ctx.getDefaults().getBarUpColor() : ctx.getDefaults().getBarDownColor();
+        series.setPriceBarColor(index, new Color(defaultBarColor.getRed(), defaultBarColor.getGreen(), defaultBarColor.getBlue(), getSettings().getInteger(Names.DOJIALPHA.toString(), index)));
       }
     }
 
