@@ -36,8 +36,7 @@ public class VGFDeltaExtras extends Study
     ZPRINTOFFST, 
     ENABLED, 
     RISEFALLBARS, 
-    DDIVLOOKBACK, 
-    FLIPTHRESH, 
+    DDIVLOOKBACK,
     DOJIALPHA, 
     DOJIBODYMAXPERC, 
     DOJIWICKMINPERC, 
@@ -52,7 +51,9 @@ public class VGFDeltaExtras extends Study
     DOWNTREND_UP, 
     DOWNTREND_DOWN,
     UPMARKERS,
-    DOWNMARKERS
+    DOWNMARKERS,
+    EMA1_PERIOD,
+    EMA2_PERIOD
   };
 
   enum Signals {
@@ -61,7 +62,6 @@ public class VGFDeltaExtras extends Study
     TRAP,
     FLIPX, // extreme flip
     FLIP,
-    FL, // threshold based flip
     EXH,
     ZR,
     DIV,
@@ -85,6 +85,8 @@ public class VGFDeltaExtras extends Study
     tab.addGroup(general);
 
     SettingGroup barColor = new SettingGroup("Trend based Bar Color");
+    barColor.addRow(new IntegerDescriptor(Names.EMA1_PERIOD.toString(), "Fast EMA Period", 9, 5, 50, 1));
+    barColor.addRow(new IntegerDescriptor(Names.EMA2_PERIOD.toString(), "Slow EMA Period", 45, 13, 200, 1));
     barColor.addRow(new ColorDescriptor(Names.UPTREND_UP.toString(), "Uptrend Up", new Color(0, 255, 0)));
     barColor.addRow(new ColorDescriptor(Names.UPTREND_DOWN.toString(), "Uptrend Down", new Color(0, 128, 128)));
     barColor.addRow(new ColorDescriptor(Names.DOWNTREND_UP.toString(), "Downtrend Up", new Color(165, 42, 42)));
@@ -114,7 +116,6 @@ public class VGFDeltaExtras extends Study
 
     SettingGroup others = new SettingGroup("Others");
     others.addRow(new IntegerDescriptor(Names.RISEFALLBARS.toString(), "N Bars for Rise/Fall", 4, 3, 10, 1));
-    others.addRow(new IntegerDescriptor(Names.FLIPTHRESH.toString(), "Flip Tolerance %", 5, 1, 100, 1));
     others.addRow(new DoubleDescriptor(Names.STOPVRATIO.toString(), "Stopping Volume Ratio", 0.7, 0, 1, .01));
     others.addRow(new IntegerDescriptor(Names.EXHRRATIO.toString(), "Exhaustion Ratio", 30, 2, 100, 1));
     others.addRow(new IntegerDescriptor(Names.EXHMAX.toString(), "Exhaustion Max", 10, 2, 100, 1));
@@ -175,10 +176,14 @@ public class VGFDeltaExtras extends Study
     }
 
     int barColorAlpha = doji ? getSettings().getInteger(Names.DOJIALPHA.toString(), index) : 255;
-    int smaPeriod = 105; // todo make trend basis configurable (source, period, matype) and plot ourselves too https://docs.motivewave.com/guides/sdk-programming-guide/overlay-example
-    if (index > smaPeriod) {
-      double trendSMA = series.sma(index, 105, Enums.BarInput.CLOSE);
-      if (close > trendSMA) {
+    int ema1Period = getSettings().getInteger(Names.EMA1_PERIOD.toString());
+    int ema2Period = getSettings().getInteger(Names.EMA2_PERIOD.toString());
+    if (index > Math.max(ema1Period, ema2Period)) {
+    // if (index > smaPeriod) {
+      double ema1 = series.ema(index, ema1Period, Enums.BarInput.CLOSE);
+      double ema2 = series.ema(index, ema2Period, Enums.BarInput.CLOSE);
+      // double trendSMA = series.sma(index, smaPeriod, Enums.BarInput.CLOSE);
+      if (ema1 > ema2) {
         Color uptrendColor = upBar ? getSettings().getColor(Names.UPTREND_UP.toString()) : getSettings().getColor(Names.UPTREND_DOWN.toString());
         series.setPriceBarColor(index, new Color(uptrendColor.getRed(), uptrendColor.getGreen(), uptrendColor.getBlue(), barColorAlpha));
       } else {
@@ -259,22 +264,13 @@ public class VGFDeltaExtras extends Study
       int priorDeltaMax = series.getInt(index - 1, Values.DELTAMAX);
       
       // delta flip
-      // todo: better calculation of percentage so we can record actual value for fine tuning during backtest
-      // ((max-close)/range)*100 upper percentage
-      // (1-((min+close)/range))*100 lower percentage
       if ((priorDeltaClose > 0 && dc.deltaClose < 0) || (priorDeltaClose < 0 && dc.deltaClose > 0)) {
-        int flipThreshold = getSettings().getInteger(Names.FLIPTHRESH.toString());
-        var boundRatio = flipThreshold / 100.0;
-        var priorBoundSize = Math.abs(priorDeltaMax - priorDeltaMin) * boundRatio;
-        var currentBoundSize = Math.abs(dc.deltaMax - dc.deltaMin) * boundRatio;
-        if (priorDeltaClose > (priorDeltaMax - priorBoundSize) && dc.deltaClose < (dc.deltaMin + currentBoundSize)) {
+        if ((dc.deltaClose == dc.deltaMin) && priorDeltaClose == priorDeltaMax) {
           aboveSignals.append("\n");
-          var flipType = (priorDeltaMin == 0 ? Signals.FLIPX : ((dc.deltaClose == dc.deltaMin) && priorDeltaClose == priorDeltaMax) ? Signals.FLIP : Signals.FL).toString();
-          aboveSignals.append(flipType);
-        } else if (priorDeltaClose < (priorDeltaMin + priorBoundSize) && dc.deltaClose > (dc.deltaMax - currentBoundSize)) {
+          aboveSignals.append(priorDeltaMin == 0 ? Signals.FLIPX : Signals.FLIP);
+        } else if ((dc.deltaClose == dc.deltaMax) && priorDeltaClose == priorDeltaMin) {
           belowSignals.append("\n");
-          var flipType = (priorDeltaMax == 0 ? Signals.FLIPX : ((dc.deltaClose == dc.deltaMax) && priorDeltaClose == priorDeltaMin) ? Signals.FLIP : Signals.FL).toString();
-          belowSignals.append(flipType);
+          belowSignals.append(priorDeltaMax == 0 ? Signals.FLIPX : Signals.FLIP);
         }
       }
 
@@ -288,7 +284,6 @@ public class VGFDeltaExtras extends Study
           aboveSignals.append(Signals.EXH.toString());
         } else if (dc.asksAtHigh > 0) {
           double barRatioHigh = (dc.asksAtPenultimateHigh * 1.0)/(dc.asksAtHigh * 1.0);
-          // debug(sTime, String.format("%,.2f", barRatioHigh));
           if (barRatioHigh < stoppingVolumeRatio) {
             aboveSignals.append("\n");
             aboveSignals.append(Signals.STOPV.toString());
@@ -335,8 +330,6 @@ public class VGFDeltaExtras extends Study
         double recentLow = series.lowest(index-1, newXLookback, Enums.BarInput.LOW);
 
         // delta divergence
-        // todo: define large enough deltaVolume (maybe based on average and stdev but caution about extra processing so maybe static number based on analysis)
-        // todo: maybe consider only if prior bar is down as well (needs testing)
         if (recentLow > low && upBar && dc.deltaClose > 0) {
           belowSignals.append("\n+");
           belowSignals.append(Signals.DIV.toString());
