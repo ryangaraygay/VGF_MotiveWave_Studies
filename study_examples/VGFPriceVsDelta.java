@@ -29,6 +29,21 @@ public class VGFPriceVsDelta extends Study
 
   enum Names { ENABLED, MAXBARS, CONVDIVPERIOD};
 
+  private enum CONVDIV {
+    UPCONV(10),
+    DOWNCONV(0),
+    DIVERGENCE(5);
+
+    private final int value;
+    private CONVDIV(int value) {
+        this.value = value;
+    }
+
+    public int getValue() {
+        return value;
+    }
+  }
+
   @Override
   public void initialize(Defaults defaults)
   {
@@ -46,7 +61,7 @@ public class VGFPriceVsDelta extends Study
 
     SettingGroup display = new SettingGroup("Display");
     display.addRow(new PathDescriptor(Values.CONVDIV.toString(), "Price/Delta Convergence", Color.BLUE, 1.0f, null, true, true, false));
-    var mg = new GuideDescriptor(Inputs.MIDDLE_GUIDE, get("MIDDLE_GUIDE"), 0, 0, 999.1, .1, true);
+    var mg = new GuideDescriptor(Inputs.MIDDLE_GUIDE, get("MIDDLE_GUIDE"), CONVDIV.DIVERGENCE.getValue(), 0, 999.1, .1, true);
     mg.setDash(new float[] {3, 3});
     display.addRow(mg);
     tab.addGroup(display);
@@ -137,7 +152,7 @@ public class VGFPriceVsDelta extends Study
     // convergence/divergence is based on value of TEMA
     boolean upConvergence = hlTEMA > 0 && deltaTEMA > 0;
     boolean downConvergence = hlTEMA < 0 && deltaTEMA < 0;
-    int value = upConvergence ? 10 : (downConvergence ? -10 : 0);
+    int value = upConvergence ? CONVDIV.UPCONV.getValue() : (downConvergence ? CONVDIV.DOWNCONV.getValue() : CONVDIV.DIVERGENCE.getValue());
     series.setInt(index, Values.CONVDIV, value);
 
     series.setComplete(index);
