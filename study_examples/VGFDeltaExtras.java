@@ -9,6 +9,8 @@ import com.motivewave.platform.sdk.common.desc.*;
 import com.motivewave.platform.sdk.draw.*;
 import com.motivewave.platform.sdk.study.*;
 
+import study_examples.DeltaCalculator.VolumeSequence;
+
 @StudyHeader(
  namespace="org.vgf", 
  id="VGF_DELTA", 
@@ -62,7 +64,8 @@ public class VGFDeltaExtras extends Study
     ZR,
     DIV,
     STOPV, // stopping volume
-    POCG
+    POCG,
+    VOLSEQ
   }
 
   @Override
@@ -170,7 +173,7 @@ public class VGFDeltaExtras extends Study
     var minTickSize = series.getInstrument().getTickSize();
 
     DeltaCalculator dc = new DeltaCalculator(highQuantilePrice, lowQuantilePrice, high, low, minTickSize);
-    series.getInstrument().forEachTick(sTime, eTime, true, dc);
+    series.getInstrument().forEachTick(sTime, eTime, false, dc);
 
     series.setInt(index, Values.DELTACLOSE, dc.deltaClose);
     series.setInt(index, Values.DELTAMIN, dc.deltaMin);
@@ -338,24 +341,35 @@ public class VGFDeltaExtras extends Study
           aboveSignals.append("\n");
           aboveSignals.append(Signals.TRAP.toString());
         }
-        
-        if (aboveSignals.length() > 0) {
-          Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
-          addFigure(new Marker(c, Position.TOP, getSettings().getMarker(Names.DOWNMARKERS.toString())));
-          Coordinate c2 = new Coordinate(c.getTime(), c.getValue() + (2 * minTickSize));
-          Label l = new Label(c2, aboveSignals.toString());
-          l.setStackPolicy(StackPolicy.HCENTER);
-          addFigure(l);
-        }
+      }
+      
 
-        if (belowSignals.length() > 0) {
-          Coordinate c = new Coordinate(sTime, low - (3 * minTickSize));
-          addFigure(new Marker(c, Position.BOTTOM, getSettings().getMarker(Names.UPMARKERS.toString())));
-          Coordinate c2 = new Coordinate(c.getTime(), c.getValue() - minTickSize);
-          Label l = new Label(c2, belowSignals.toString());
-          l.setStackPolicy(StackPolicy.HCENTER);
-          addFigure(l);
-        }
+      int requiredVolumeSequence = 5; // todo user configurable volume sequence
+      VolumeSequence volumeSeq = dc.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
+      if (volumeSeq == VolumeSequence.Bullish) {
+          belowSignals.append("\n+");
+          belowSignals.append(Signals.VOLSEQ.toString());
+      } else if (volumeSeq == VolumeSequence.Bearish) {
+          aboveSignals.append("\n-");
+          aboveSignals.append(Signals.VOLSEQ.toString());
+      }
+
+      if (aboveSignals.length() > 0) {
+        Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
+        addFigure(new Marker(c, Position.TOP, getSettings().getMarker(Names.DOWNMARKERS.toString())));
+        Coordinate c2 = new Coordinate(c.getTime(), c.getValue() + (2 * minTickSize));
+        Label l = new Label(c2, aboveSignals.toString());
+        l.setStackPolicy(StackPolicy.HCENTER);
+        addFigure(l);
+      }
+
+      if (belowSignals.length() > 0) {
+        Coordinate c = new Coordinate(sTime, low - (3 * minTickSize));
+        addFigure(new Marker(c, Position.BOTTOM, getSettings().getMarker(Names.UPMARKERS.toString())));
+        Coordinate c2 = new Coordinate(c.getTime(), c.getValue() - minTickSize);
+        Label l = new Label(c2, belowSignals.toString());
+        l.setStackPolicy(StackPolicy.HCENTER);
+        addFigure(l);
       }
     }
 
