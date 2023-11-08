@@ -5,6 +5,7 @@ import java.awt.Color;
 import com.motivewave.platform.sdk.common.*;
 import com.motivewave.platform.sdk.common.desc.BooleanDescriptor;
 import com.motivewave.platform.sdk.common.desc.GuideDescriptor;
+import com.motivewave.platform.sdk.common.desc.IndicatorDescriptor;
 import com.motivewave.platform.sdk.common.desc.IntegerDescriptor;
 import com.motivewave.platform.sdk.common.desc.PathDescriptor;
 import com.motivewave.platform.sdk.common.desc.SettingGroup;
@@ -25,14 +26,14 @@ import com.motivewave.platform.sdk.study.*;
  studyOverlay=false)
 public class VGFPriceVsDelta extends Study
 {
-  enum Values { DELTACLOSE, CLOSE, CONVDIV, HLEMA1, DCEMA1, HLEMA2, HLEMA3, DCEMA2, DCEMA3, HLTEMA, DCTEMA };
+  enum Values { DELTACLOSE, CLOSE, CONVDIV, HLEMA1, DCEMA1, HLEMA2, HLEMA3, DCEMA2, DCEMA3, HLTEMA, DCTEMA, CORR };
 
   enum Names { ENABLED, MAXBARS, CONVDIVPERIOD};
 
   private enum CONVDIV {
     UPCONV(10),
-    DOWNCONV(0),
-    DIVERGENCE(5);
+    DOWNCONV(-10),
+    DIVERGENCE(0);
 
     private final int value;
     private CONVDIV(int value) {
@@ -72,11 +73,17 @@ public class VGFPriceVsDelta extends Study
     shading.addRow(new ShadeDescriptor(Inputs.BOTTOM_FILL, get("BOTTOM_FILL"), Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(),
         Enums.ShadeType.BELOW, defaults.getBottomFillColor(), true, true));
 
+    SettingGroup indicators = new SettingGroup("Indicators");
+    tab.addGroup(indicators);
+    indicators.addRow(new IndicatorDescriptor(Inputs.IND, "Convergence Ind", null, null, false, true, true));
+
     RuntimeDescriptor desc = new RuntimeDescriptor();
     setRuntimeDescriptor(desc);
     desc.exportValue(new ValueDescriptor(Values.DELTACLOSE, "Delta Close", null));
     desc.exportValue(new ValueDescriptor(Values.HLTEMA, "HighLow TEMA", null));
     desc.exportValue(new ValueDescriptor(Values.DCTEMA, "Delta Close TEMA", null));
+    desc.exportValue(new ValueDescriptor(Values.CORR, "Correlation", null));
+    desc.declareIndicator(Values.CONVDIV, Inputs.IND);
     desc.declarePath(Values.CONVDIV, Values.CONVDIV.toString());
     desc.setRangeKeys(Values.CONVDIV);
   }
@@ -149,13 +156,33 @@ public class VGFPriceVsDelta extends Study
     double deltaTEMA = (3 * deltaEMA1) - (3 * deltaEMA2) + (deltaEMA3);
     series.setDouble(index, Values.DCTEMA, deltaTEMA);
 
+    double corrFactor = 1;
+    if (index - period > startingIndex) { // we haven't computed prior to barlimit
+      double[] hltemas = getValues(series, Values.HLTEMA, index, 5);
+      double[] dctemas = getValues(series, Values.DCTEMA, index, 5);
+      if (hltemas != null & dctemas != null) {
+        corrFactor = Utils.Correlation(hltemas, dctemas);
+      }
+    }
+    series.setDouble(index, Values.CORR, corrFactor);
+
     // convergence/divergence is based on value of TEMA
+    // adjusted for correlation for strength
     boolean upConvergence = hlTEMA > 0 && deltaTEMA > 0;
     boolean downConvergence = hlTEMA < 0 && deltaTEMA < 0;
-    int value = upConvergence ? CONVDIV.UPCONV.getValue() : (downConvergence ? CONVDIV.DOWNCONV.getValue() : CONVDIV.DIVERGENCE.getValue());
-    series.setInt(index, Values.CONVDIV, value);
+    double adjustedCorrelation = (corrFactor < 0) ? 0.1 : corrFactor; // technically divergence (or low strength) but we still want to favor both price/delta TEMA on the same side
+    double value = upConvergence ? CONVDIV.UPCONV.getValue() * adjustedCorrelation : (downConvergence ? CONVDIV.DOWNCONV.getValue() * adjustedCorrelation : CONVDIV.DIVERGENCE.getValue());
+    series.setDouble(index, Values.CONVDIV, value);
 
     series.setComplete(index);
+  }
+
+  private double[] getValues(DataSeries series, Object o, int index, int period) {
+    double[] retVal = new double[period];
+    for (int i = 1; i <= period; i++) {
+      retVal[i-1] = series.getDouble(index - (period - i), o);
+    }
+    return retVal;
   }
 
   private double getEMA(double newValue, Double oldValue, double alpha) {

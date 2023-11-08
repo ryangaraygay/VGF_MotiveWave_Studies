@@ -342,7 +342,6 @@ public class VGFDeltaExtras extends Study
           aboveSignals.append(Signals.TRAP.toString());
         }
       }
-      
 
       int requiredVolumeSequence = 5; // todo user configurable volume sequence
       VolumeSequence volumeSeq = dc.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
