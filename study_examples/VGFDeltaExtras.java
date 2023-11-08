@@ -79,8 +79,8 @@ public class VGFDeltaExtras extends Study
 
     SettingGroup general = new SettingGroup("General");
     general.addRow(new BooleanDescriptor(Names.ENABLED.toString(), "Enable Operations", true));
-    general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 20, 1, 10000, 1));
-    general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 8, 1, 10, 1));
+    general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 60, 1, 10000, 1));
+    general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 7, 1, 10, 1));
     tab.addGroup(general);
     
     SettingGroup doji = new SettingGroup("Doji");
