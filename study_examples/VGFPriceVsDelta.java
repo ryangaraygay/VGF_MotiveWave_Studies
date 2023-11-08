@@ -1,6 +1,7 @@
 package study_examples;
 
 import java.awt.Color;
+import java.awt.Font;
 
 import com.motivewave.platform.sdk.common.*;
 import com.motivewave.platform.sdk.common.desc.BooleanDescriptor;
@@ -28,7 +29,7 @@ public class VGFPriceVsDelta extends Study
 {
   enum Values { DELTACLOSE, CLOSE, CONVDIV, HLEMA1, DCEMA1, HLEMA2, HLEMA3, DCEMA2, DCEMA3, HLTEMA, DCTEMA, CORR };
 
-  enum Names { ENABLED, MAXBARS, CONVDIVPERIOD};
+  enum Names { ENABLED, MAXBARS, CONVDIVPERIOD, CORRPERIOD };
 
   private enum CONVDIV {
     UPCONV(10),
@@ -56,26 +57,25 @@ public class VGFPriceVsDelta extends Study
 
     SettingGroup general = new SettingGroup("General");
     general.addRow(new BooleanDescriptor(Names.ENABLED.toString(), "Enable Operations", true));
-    general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 20, 1, 10000, 1));
-    general.addRow(new IntegerDescriptor(Names.CONVDIVPERIOD.toString(), "Price vs Delta Conv/Div Period", 21, 5, 200, 1));
+    general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 60, 1, 10000, 1));
     tab.addGroup(general);
 
-    SettingGroup display = new SettingGroup("Display");
-    display.addRow(new PathDescriptor(Values.CONVDIV.toString(), "Price/Delta Convergence", Color.BLUE, 1.0f, null, true, true, false));
+    SettingGroup convdiv = new SettingGroup("Convergence / Divergence");
+    convdiv.addRow(new IntegerDescriptor(Names.CONVDIVPERIOD.toString(), "Period", 21, 5, 200, 1));
+    convdiv.addRow(new PathDescriptor(Values.CONVDIV.toString(), "Path", Color.GRAY, 0.25f, null, true, true, false));
     var mg = new GuideDescriptor(Inputs.MIDDLE_GUIDE, get("MIDDLE_GUIDE"), CONVDIV.DIVERGENCE.getValue(), 0, 999.1, .1, true);
     mg.setDash(new float[] {3, 3});
-    display.addRow(mg);
-    tab.addGroup(display);
+    convdiv.addRow(mg);
+    convdiv.addRow(new ShadeDescriptor(Inputs.TOP_FILL, "Positive Fill", Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(), Enums.ShadeType.ABOVE, defaults.getTopFillColor(), true, true));
+    convdiv.addRow(new ShadeDescriptor(Inputs.BOTTOM_FILL, "Negative Fill", Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(), Enums.ShadeType.BELOW, defaults.getBottomFillColor(), true, true));
+    convdiv.addRow(new IndicatorDescriptor(Inputs.IND, "Scale Marker", Color.WHITE, Color.GRAY, new Font("Courier", Font.BOLD, 16), true, null, 0.25f, null, false, true, true));
+    tab.addGroup(convdiv);
 
-    SettingGroup shading = tab.addGroup(get("SHADING"));
-    shading.addRow(new ShadeDescriptor(Inputs.TOP_FILL, get("TOP_FILL"), Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(),
-        Enums.ShadeType.ABOVE, defaults.getTopFillColor(), true, true));
-    shading.addRow(new ShadeDescriptor(Inputs.BOTTOM_FILL, get("BOTTOM_FILL"), Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(),
-        Enums.ShadeType.BELOW, defaults.getBottomFillColor(), true, true));
-
-    SettingGroup indicators = new SettingGroup("Indicators");
-    tab.addGroup(indicators);
-    indicators.addRow(new IndicatorDescriptor(Inputs.IND, "Convergence Ind", null, null, false, true, true));
+    SettingGroup corr = new SettingGroup("Correlation / Strength");
+    corr.addRow(new IntegerDescriptor(Names.CORRPERIOD.toString(), "Period", 5, 3, 200, 1));
+    corr.addRow(new PathDescriptor(Values.CORR.toString(), "Path", Color.BLACK, 1.0f, null, true, true, false));
+    corr.addRow(new IndicatorDescriptor(Inputs.STRENGTH, "Scale Marker", Color.WHITE, Color.BLACK, new Font("Courier", Font.BOLD, 16), true, null, 0.25f, null, false, true, true));
+    tab.addGroup(corr);
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
     setRuntimeDescriptor(desc);
@@ -84,8 +84,10 @@ public class VGFPriceVsDelta extends Study
     desc.exportValue(new ValueDescriptor(Values.DCTEMA, "Delta Close TEMA", null));
     desc.exportValue(new ValueDescriptor(Values.CORR, "Correlation", null));
     desc.declareIndicator(Values.CONVDIV, Inputs.IND);
+    desc.declareIndicator(Values.CORR, Inputs.STRENGTH);
     desc.declarePath(Values.CONVDIV, Values.CONVDIV.toString());
-    desc.setRangeKeys(Values.CONVDIV);
+    desc.declarePath(Values.CORR, Values.CORR.toString());
+    desc.setRangeKeys(Values.CONVDIV, Values.CORR);
   }
 
   @Override
@@ -115,8 +117,8 @@ public class VGFPriceVsDelta extends Study
       series.setComplete(index, Values.DELTACLOSE);
     }
 
-    int period = getSettings().getInteger(Names.CONVDIVPERIOD.toString());
-    double alpha = 2.0/((double)period + 1);
+    int convdivperiod = getSettings().getInteger(Names.CONVDIVPERIOD.toString());
+    double alpha = 2.0/((double)convdivperiod + 1);
 
     // Triple EMA of high-low
     Double oldHighLowEMA = series.getDouble(index - 1, Values.HLEMA1);
@@ -157,21 +159,20 @@ public class VGFPriceVsDelta extends Study
     series.setDouble(index, Values.DCTEMA, deltaTEMA);
 
     double corrFactor = 1;
-    if (index - period > startingIndex) { // we haven't computed prior to barlimit
-      double[] hltemas = getValues(series, Values.HLTEMA, index, 5);
-      double[] dctemas = getValues(series, Values.DCTEMA, index, 5);
+    int corrPeriod = getSettings().getInteger(Names.CORRPERIOD.toString());
+    if (index - convdivperiod > startingIndex) { // we haven't computed prior to barlimit
+      double[] hltemas = getValues(series, Values.HLTEMA, index, corrPeriod);
+      double[] dctemas = getValues(series, Values.DCTEMA, index, corrPeriod);
       if (hltemas != null & dctemas != null) {
         corrFactor = Utils.Correlation(hltemas, dctemas);
       }
     }
-    series.setDouble(index, Values.CORR, corrFactor);
+    series.setDouble(index, Values.CORR, corrFactor * CONVDIV.UPCONV.getValue());
 
     // convergence/divergence is based on value of TEMA
-    // adjusted for correlation for strength
     boolean upConvergence = hlTEMA > 0 && deltaTEMA > 0;
     boolean downConvergence = hlTEMA < 0 && deltaTEMA < 0;
-    double adjustedCorrelation = (corrFactor < 0) ? 0.1 : corrFactor; // technically divergence (or low strength) but we still want to favor both price/delta TEMA on the same side
-    double value = upConvergence ? CONVDIV.UPCONV.getValue() * adjustedCorrelation : (downConvergence ? CONVDIV.DOWNCONV.getValue() * adjustedCorrelation : CONVDIV.DIVERGENCE.getValue());
+    double value = upConvergence ? CONVDIV.UPCONV.getValue() : (downConvergence ? CONVDIV.DOWNCONV.getValue() : CONVDIV.DIVERGENCE.getValue());
     series.setDouble(index, Values.CONVDIV, value);
 
     series.setComplete(index);
