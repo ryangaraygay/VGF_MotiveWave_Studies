@@ -51,6 +51,14 @@ public class DeltaCalculator implements TickOperation {
       None
     }
 
+    public float getDeltaRange() {
+      return deltaMax - deltaMin;
+    }
+
+    public int getCloseRangePerc() {
+      return (int)(deltaClose * 100 / (getDeltaRange()));
+    }
+
     public VolumeSequence hasVolumeSequence(int requiredIncreasingAsk, int requiredDecreasingBid) {
       int maxIncreasingAskCount = 0;
       int maxDecreasingBidCount = 0;

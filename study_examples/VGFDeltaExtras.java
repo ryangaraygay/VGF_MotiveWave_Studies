@@ -22,7 +22,7 @@ import study_examples.DeltaCalculator.VolumeSequence;
  studyOverlay=false)
 public class VGFDeltaExtras extends Study
 {
-  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL, POC };
+  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL, POC, AVGDMIN, AVGDMAX };
 
   enum Names 
   { 
@@ -51,7 +51,9 @@ public class VGFDeltaExtras extends Study
     UPMARKERS,
     DOWNMARKERS,
     EMA1_PERIOD,
-    EMA2_PERIOD
+    EMA2_PERIOD,
+    DCLOSERATIOUP,
+    DCLOSERATIODOWN
   };
 
   enum Signals {
@@ -65,7 +67,9 @@ public class VGFDeltaExtras extends Study
     DIV,
     STOPV, // stopping volume
     POCG,
-    VOLSEQ
+    VOLSEQ,
+    HDMAX,
+    HDMIN
   }
 
   @Override
@@ -114,6 +118,8 @@ public class VGFDeltaExtras extends Study
     others.addRow(new MarkerDescriptor(Names.POCGD.toString(), "POC Gap Down", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.RED.darker(), Color.RED.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.UPMARKERS.toString(), "Up Markers", Enums.MarkerType.TRIANGLE, Enums.Size.SMALL, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.DOWNMARKERS.toString(), "Down Markers", Enums.MarkerType.TRIANGLE, Enums.Size.SMALL, Color.RED.darker(), Color.RED.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.DCLOSERATIOUP.toString(), "Delta Close Near Max", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.DCLOSERATIODOWN.toString(), "Delta Close Near Min", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.RED.darker(), Color.RED.darker(), true, true));
     
 
     tab.addGroup(others);
@@ -285,10 +291,7 @@ public class VGFDeltaExtras extends Study
 
       // delta rising/falling
       int deltaSequenceCount = getSettings().getInteger(Names.RISEFALLBARS.toString());
-      int[] deltas = new int[deltaSequenceCount];
-      for (int i = 1; i <= deltaSequenceCount; i++) {
-        deltas[i-1] = series.getInt(index - (deltaSequenceCount - i), Values.DELTACLOSE);
-      }
+      int[] deltas = Utils.getIntValues(series, Values.DELTACLOSE, index, deltaSequenceCount);
 
       Direction d = evaluateDirection(deltas);
       if (d == Direction.Rise) {
@@ -343,15 +346,56 @@ public class VGFDeltaExtras extends Study
         }
       }
 
-      int requiredVolumeSequence = 5; // todo user configurable volume sequence
+      int requiredVolumeSequence = 5; // todo user configurable volume sequence (default 5)
       VolumeSequence volumeSeq = dc.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
       if (volumeSeq == VolumeSequence.Bullish) {
-          belowSignals.append("\n+");
+          belowSignals.append("\n");
           belowSignals.append(Signals.VOLSEQ.toString());
       } else if (volumeSeq == VolumeSequence.Bearish) {
-          aboveSignals.append("\n-");
+          aboveSignals.append("\n");
           aboveSignals.append(Signals.VOLSEQ.toString());
       }
+
+      int deltaCloseStrength = 95; // todo make user configurable deltaclose strength (default 95)
+      int deltaClosePerc = dc.getCloseRangePerc();
+      if (deltaClosePerc > deltaCloseStrength) {
+        Coordinate c = new Coordinate(sTime, high);
+        Marker m = new Marker(c, Position.TOP_RIGHT, getSettings().getMarker(Names.DCLOSERATIOUP.toString()));
+        m.setStackPolicy(StackPolicy.HCENTER);
+        addFigure(m);
+      } else if (deltaClosePerc < -deltaCloseStrength) {
+        Coordinate c = new Coordinate(sTime, low);
+        Marker m = new Marker(c, Position.BOTTOM_LEFT, getSettings().getMarker(Names.DCLOSERATIODOWN.toString()));
+        m.setStackPolicy(StackPolicy.HCENTER);
+        addFigure(m);
+      }
+
+      // conv/div is able to detect outlier max or min-delta so skip this for now
+      // // review and ensure this doesn't (a) include itself (b) doesn't break
+      // boolean detectOutlierMinMaxDelta = true; // todo allow enable/disable (because this is expensive)
+      // if (detectOutlierMinMaxDelta) {
+      //   int deltaAvgPeriod = 5; // todo user configurable outlier min/max delta period
+      //   int sIndex = index-1; // exclude itself
+      //   if (sIndex - deltaAvgPeriod > startingIndex) {
+      //     double[] maxDs = Utils.getDoubleValues(series, Values.DELTAMAX, sIndex, deltaAvgPeriod);
+      //     double maxDAvg = Utils.getAverage(maxDs);
+      //     double maxDStdev = Utils.calculateStandardDeviation(maxDs);
+      //     double[] minDs = Utils.getDoubleValues(series, Values.DELTAMIN, sIndex, deltaAvgPeriod);
+      //     double minDAvg = Utils.getAverage(minDs);
+      //     double minDStdev = Utils.calculateStandardDeviation(minDs);
+
+      //     int outlierMultiplier = 3;
+      //     if (dc.deltaMax > (maxDAvg + (outlierMultiplier * maxDStdev))) {
+      //       belowSignals.append("\n");
+      //       belowSignals.append(Signals.HDMAX.toString());
+      //     }
+
+      //     if (dc.deltaMin < (minDAvg - (outlierMultiplier * minDStdev))) {
+      //       aboveSignals.append("\n");
+      //       aboveSignals.append(Signals.HDMIN.toString());
+      //     }
+      //   }
+      // }
 
       if (aboveSignals.length() > 0) {
         Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));

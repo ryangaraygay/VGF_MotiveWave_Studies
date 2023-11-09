@@ -2,6 +2,8 @@ package study_examples;
 
 import java.util.DoubleSummaryStatistics;
 
+import com.motivewave.platform.sdk.common.DataSeries;
+
 public class Utils {
     
     public static double getAverage(double[] values) {
@@ -100,4 +102,28 @@ public class Utils {
         // correlation is just a normalized covariation
         return cov / sigmax / sigmay;
       }
+
+    public static double[] getDoubleValues(DataSeries series, Object o, int index, int period) {
+        double[] retVal = new double[period];
+        for (int i = 1; i <= period; i++) {
+            retVal[i-1] = series.getDouble(index - (period - i), o);
+        }
+        return retVal;
+    }
+
+    public static int[] getIntValues(DataSeries series, Object o, int index, int period) {
+        int[] retVal = new int[period];
+        for (int i = 1; i <= period; i++) {
+            retVal[i-1] = series.getInt(index - (period - i), o);
+        }
+        return retVal;
+    }
+
+    public static double getEMA(double newValue, Double oldValue, double alpha) {
+        double returnValue = newValue;
+        if (oldValue != null) {
+            returnValue = oldValue + (alpha * (returnValue - oldValue));
+        }
+        return returnValue;
+    }
 }

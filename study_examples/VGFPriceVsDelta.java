@@ -123,17 +123,17 @@ public class VGFPriceVsDelta extends Study
     // Triple EMA of high-low
     Double oldHighLowEMA = series.getDouble(index - 1, Values.HLEMA1);
     double newHighLowEMA = series.getClose(index) - series.getOpen(index);
-    double hlema1 = getEMA(newHighLowEMA, oldHighLowEMA, alpha);
+    double hlema1 = Utils.getEMA(newHighLowEMA, oldHighLowEMA, alpha);
     series.setDouble(index, Values.HLEMA1, hlema1);
 
     Double oldHLEMA2 = series.getDouble(index - 1, Values.HLEMA2);
     double newHLEMA2 = hlema1;
-    double hlema2 = getEMA(newHLEMA2, oldHLEMA2, alpha);
+    double hlema2 = Utils.getEMA(newHLEMA2, oldHLEMA2, alpha);
     series.setDouble(index, Values.HLEMA2, hlema2);
 
     Double oldHLEMA3 = series.getDouble(index - 1, Values.HLEMA3);
     double newHLEMA3 = hlema2;
-    double hlema3 = getEMA(newHLEMA3, oldHLEMA3, alpha);
+    double hlema3 = Utils.getEMA(newHLEMA3, oldHLEMA3, alpha);
     series.setDouble(index, Values.HLEMA3, hlema3);
 
     double hlTEMA = (3 * hlema1) - (3 * hlema2) + (hlema3);
@@ -142,17 +142,17 @@ public class VGFPriceVsDelta extends Study
     // Triple EMA of delta close
     Double oldDeltaEMA1 = series.getDouble(index - 1, Values.DCEMA1);
     double newDeltaEMA1 = currentDeltaClose;
-    double deltaEMA1 = getEMA(newDeltaEMA1, oldDeltaEMA1, alpha);
+    double deltaEMA1 = Utils.getEMA(newDeltaEMA1, oldDeltaEMA1, alpha);
     series.setDouble(index, Values.DCEMA1, deltaEMA1);
 
     Double oldDeltaEMA2 = series.getDouble(index - 1, Values.DCEMA2);
     double newDeltaEMA2 = deltaEMA1;
-    double deltaEMA2 = getEMA(newDeltaEMA2, oldDeltaEMA2, alpha);
+    double deltaEMA2 = Utils.getEMA(newDeltaEMA2, oldDeltaEMA2, alpha);
     series.setDouble(index, Values.DCEMA2, deltaEMA2);
 
     Double oldDeltaEMA3 = series.getDouble(index - 1, Values.DCEMA3);
     double newDeltaEMA3 = deltaEMA2;
-    double deltaEMA3 = getEMA(newDeltaEMA3, oldDeltaEMA3, alpha);
+    double deltaEMA3 = Utils.getEMA(newDeltaEMA3, oldDeltaEMA3, alpha);
     series.setDouble(index, Values.DCEMA3, deltaEMA3);
 
     double deltaTEMA = (3 * deltaEMA1) - (3 * deltaEMA2) + (deltaEMA3);
@@ -161,8 +161,8 @@ public class VGFPriceVsDelta extends Study
     double corrFactor = 1;
     int corrPeriod = getSettings().getInteger(Names.CORRPERIOD.toString());
     if (index - convdivperiod > startingIndex) { // we haven't computed prior to barlimit
-      double[] hltemas = getValues(series, Values.HLTEMA, index, corrPeriod);
-      double[] dctemas = getValues(series, Values.DCTEMA, index, corrPeriod);
+      double[] hltemas = Utils.getDoubleValues(series, Values.HLTEMA, index, corrPeriod);
+      double[] dctemas = Utils.getDoubleValues(series, Values.DCTEMA, index, corrPeriod);
       if (hltemas != null & dctemas != null) {
         corrFactor = Utils.Correlation(hltemas, dctemas);
       }
@@ -176,22 +176,6 @@ public class VGFPriceVsDelta extends Study
     series.setDouble(index, Values.CONVDIV, value);
 
     series.setComplete(index);
-  }
-
-  private double[] getValues(DataSeries series, Object o, int index, int period) {
-    double[] retVal = new double[period];
-    for (int i = 1; i <= period; i++) {
-      retVal[i-1] = series.getDouble(index - (period - i), o);
-    }
-    return retVal;
-  }
-
-  private double getEMA(double newValue, Double oldValue, double alpha) {
-    double returnValue = newValue;
-    if (oldValue != null) {
-      returnValue = oldValue + (alpha * (returnValue - oldValue));
-    }
-    return returnValue;
   }
 
   private class DeltaCloseCalculator implements TickOperation {
