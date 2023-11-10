@@ -65,6 +65,8 @@ public class VGFPriceVsDelta extends Study
     convdiv.addRow(new PathDescriptor(Values.CONVDIV.toString(), "Path", Color.GRAY, 0.25f, null, true, true, false));
     var mg = new GuideDescriptor(Inputs.MIDDLE_GUIDE, get("MIDDLE_GUIDE"), CONVDIV.DIVERGENCE.getValue(), 0, 999.1, .1, true);
     mg.setDash(new float[] {3, 3});
+    mg.setTextColor(Color.LIGHT_GRAY);
+    mg.setWidth(0.25f);
     convdiv.addRow(mg);
     convdiv.addRow(new ShadeDescriptor(Inputs.TOP_FILL, "Positive Fill", Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(), Enums.ShadeType.ABOVE, defaults.getTopFillColor(), true, true));
     convdiv.addRow(new ShadeDescriptor(Inputs.BOTTOM_FILL, "Negative Fill", Inputs.MIDDLE_GUIDE, Values.CONVDIV.toString(), Enums.ShadeType.BELOW, defaults.getBottomFillColor(), true, true));
@@ -73,8 +75,8 @@ public class VGFPriceVsDelta extends Study
 
     SettingGroup corr = new SettingGroup("Correlation / Strength");
     corr.addRow(new IntegerDescriptor(Names.CORRPERIOD.toString(), "Period", 5, 3, 200, 1));
-    corr.addRow(new PathDescriptor(Values.CORR.toString(), "Path", Color.BLACK, 1.0f, null, true, true, false));
-    corr.addRow(new IndicatorDescriptor(Inputs.STRENGTH, "Scale Marker", Color.WHITE, Color.BLACK, new Font("Courier", Font.BOLD, 16), true, null, 0.25f, null, false, true, true));
+    corr.addRow(new PathDescriptor(Values.CORR.toString(), "Path", Color.BLUE, 2.0f, new float[] {3, 3}, true, true, false));
+    corr.addRow(new IndicatorDescriptor(Inputs.STRENGTH, "Scale Marker", Color.WHITE, Color.BLUE, new Font("Courier", Font.BOLD, 16), true, null, 0.25f, null, false, true, true));
     tab.addGroup(corr);
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
@@ -87,7 +89,8 @@ public class VGFPriceVsDelta extends Study
     desc.declareIndicator(Values.CORR, Inputs.STRENGTH);
     desc.declarePath(Values.CONVDIV, Values.CONVDIV.toString());
     desc.declarePath(Values.CORR, Values.CORR.toString());
-    desc.setRangeKeys(Values.CONVDIV, Values.CORR);
+    desc.setFixedTopValue(CONVDIV.UPCONV.getValue());
+    desc.setFixedBottomValue(CONVDIV.DOWNCONV.getValue());
   }
 
   @Override
