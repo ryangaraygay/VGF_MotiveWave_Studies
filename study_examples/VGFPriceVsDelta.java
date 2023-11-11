@@ -2,18 +2,10 @@ package study_examples;
 
 import java.awt.Color;
 import java.awt.Font;
+import java.util.TimeZone;
 
 import com.motivewave.platform.sdk.common.*;
-import com.motivewave.platform.sdk.common.desc.BooleanDescriptor;
-import com.motivewave.platform.sdk.common.desc.GuideDescriptor;
-import com.motivewave.platform.sdk.common.desc.IndicatorDescriptor;
-import com.motivewave.platform.sdk.common.desc.IntegerDescriptor;
-import com.motivewave.platform.sdk.common.desc.PathDescriptor;
-import com.motivewave.platform.sdk.common.desc.SettingGroup;
-import com.motivewave.platform.sdk.common.desc.SettingTab;
-import com.motivewave.platform.sdk.common.desc.SettingsDescriptor;
-import com.motivewave.platform.sdk.common.desc.ShadeDescriptor;
-import com.motivewave.platform.sdk.common.desc.ValueDescriptor;
+import com.motivewave.platform.sdk.common.desc.*;
 import com.motivewave.platform.sdk.study.*;
 
 @StudyHeader(
@@ -56,7 +48,6 @@ public class VGFPriceVsDelta extends Study
     sd.addTab(tab);
 
     SettingGroup general = new SettingGroup("General");
-    general.addRow(new BooleanDescriptor(Names.ENABLED.toString(), "Enable Operations", true));
     general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 60, 1, 10000, 1));
     tab.addGroup(general);
 
@@ -96,8 +87,6 @@ public class VGFPriceVsDelta extends Study
   @Override
   protected void calculate(int index, DataContext ctx)
   {
-    if (!getSettings().getBoolean(Names.ENABLED.toString())) return;
-
     DataSeries series = ctx.getDataSeries();
     int seriesSize = series.size();
     if (seriesSize == 0) return;
@@ -193,20 +182,16 @@ public class VGFPriceVsDelta extends Study
     }    
   }
 
-  public void debug(long millisTime, Object... args) {
-      var instance = java.time.Instant.ofEpochMilli(millisTime);
-      var zonedDateTime = java.time.ZonedDateTime.ofInstant(instance,java.time.ZoneId.of("US/Pacific"));
-      var formatter = java.time.format.DateTimeFormatter.ofPattern("u-M-d hh:mm:ss a O");
-      var s = zonedDateTime.format(formatter);
-      StringBuilder sb = new StringBuilder();
-      sb.append(s);
-      sb.append(" ");
-      for (int i = 0; i < args.length; i++) {
+  private void debug(long millisTime, Object... args) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(Util.formatMMDDYYYYHHMM(millisTime, TimeZone.getTimeZone("US/Pacific")));
+    sb.append(" ");
+    for (int i = 0; i < args.length; i++) {
       sb.append(args[i]);
       sb.append(" ");
-      }
+    }
 
-      debug(sb.toString());
+    debug(sb.toString());
   }
 }
 

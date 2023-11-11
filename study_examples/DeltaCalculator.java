@@ -18,10 +18,12 @@ public class DeltaCalculator implements TickOperation {
     int deltaClose = 0;
     int bidsAtHigh = 0;
     int bidsAtPenultimateLow = 0;
+    // int bidsAtPenultimateHigh = 0;
     int bidsAtLow = 0;
     int asksAtHigh = 0;
     int asksAtLow = 0;
     int asksAtPenultimateHigh = 0;
+    // int asksAtPenultimateLow = 0;
 
     private float _highQuantilePrice = 0;
     private float _lowQuantilePrice = 0;
@@ -135,8 +137,10 @@ public class DeltaCalculator implements TickOperation {
       bidsAtHigh += t.getPrice() == _high && !isAsk ? tv : 0;
       bidsAtLow += t.getPrice() == _low && !isAsk ? tv : 0;
       bidsAtPenultimateLow += t.getPrice() == (_low + _minTickSize) && !isAsk ? tv : 0;
+      // bidsAtPenultimateHigh += t.getPrice() == (_high - _minTickSize) && !isAsk ? tv : 0;
       asksAtHigh += t.getPrice() == _high && isAsk ? tv : 0;
       asksAtPenultimateHigh += t.getPrice() == (_high - _minTickSize) && isAsk ? tv : 0; 
+      // asksAtPenultimateLow += t.getPrice() == (_low + _minTickSize) && isAsk ? tv : 0; 
       asksAtLow += t.getPrice() == _low && isAsk ? tv : 0; 
 
       float priceLevel = t.getPrice();

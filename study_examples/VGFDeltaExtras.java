@@ -1,6 +1,7 @@
 package study_examples;
 
 import java.awt.Color;
+import java.util.TimeZone;
 
 import com.motivewave.platform.sdk.common.*;
 import com.motivewave.platform.sdk.common.Enums.Position;
@@ -82,9 +83,8 @@ public class VGFDeltaExtras extends Study
     sd.addTab(tab);
 
     SettingGroup general = new SettingGroup("General");
-    general.addRow(new BooleanDescriptor(Names.ENABLED.toString(), "Enable Operations", true));
     general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 60, 1, 10000, 1));
-    general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 7, 1, 10, 1));
+    general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 6, 1, 10, 1));
     tab.addGroup(general);
     
     SettingGroup doji = new SettingGroup("Doji");
@@ -141,8 +141,6 @@ public class VGFDeltaExtras extends Study
   @Override
   protected void calculate(int index, DataContext ctx)
   {
-    if (!getSettings().getBoolean(Names.ENABLED.toString())) return;
-
     DataSeries series = ctx.getDataSeries();
     int seriesSize = series.size();
     if (seriesSize == 0) return;
@@ -162,9 +160,9 @@ public class VGFDeltaExtras extends Study
 
     var r = series.getRange(index);
     var body = Math.abs(close - open);
-    var tail = Math.min(open, close) - low;
-    var nose = high - Math.max(open, close);
     if (body != 0) {
+      var tail = Math.min(open, close) - low;
+      var nose = high - Math.max(open, close);
       var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODYMAXPERC.toString()) / 100.0;
       var dojiWickThresholdPerc = getSettings().getInteger(Names.DOJIWICKMINPERC.toString()) / 100.0;
       if (body < (r * dojiBodyThresholdPerc) && tail > r * dojiWickThresholdPerc && nose > r * dojiWickThresholdPerc) {
@@ -304,14 +302,14 @@ public class VGFDeltaExtras extends Study
 
       int newXLookback = getSettings().getInteger(Names.DDIVLOOKBACK.toString());
       if (index > newXLookback + 1) {
-        double recentHigh = series.highest(index-1, newXLookback, Enums.BarInput.HIGH);
-        double recentLow = series.lowest(index-1, newXLookback, Enums.BarInput.LOW);
+        double localHigh = series.highest(index-1, newXLookback, Enums.BarInput.HIGH);
+        double localLow = series.lowest(index-1, newXLookback, Enums.BarInput.LOW);
 
         // delta divergence
-        if (recentLow > low && upBar && dc.deltaClose > 0) {
+        if (localLow > low && upBar && dc.deltaClose > 0) {
           belowSignals.append("\n+");
           belowSignals.append(Signals.DIV.toString());
-        } else if (recentHigh < high && downBar && dc.deltaClose < 0) {
+        } else if (localHigh < high && downBar && dc.deltaClose < 0) {
           aboveSignals.append("\n-");
           aboveSignals.append(Signals.DIV.toString());
         }
@@ -323,7 +321,7 @@ public class VGFDeltaExtras extends Study
         addFigure(new Marker(new Coordinate(sTime, poc), Position.CENTER, getSettings().getMarker(Names.POCGD.toString())));
       }
 
-      double requiredGapUpOrDown = 4 * minTickSize;
+      double requiredGapUpOrDown = 4 * minTickSize; // todo configurable poc gap in ticks required for delta trap
       Float priorPOC = series.getFloat(index-1, Values.POC);
       if (priorPOC != null) {
         int deltaTrapMin = getSettings().getInteger(Names.DTRAP.toString());
@@ -369,33 +367,6 @@ public class VGFDeltaExtras extends Study
         m.setStackPolicy(StackPolicy.HCENTER);
         addFigure(m);
       }
-
-      // conv/div is able to detect outlier max or min-delta so skip this for now
-      // // review and ensure this doesn't (a) include itself (b) doesn't break
-      // boolean detectOutlierMinMaxDelta = true; // todo allow enable/disable (because this is expensive)
-      // if (detectOutlierMinMaxDelta) {
-      //   int deltaAvgPeriod = 5; // todo user configurable outlier min/max delta period
-      //   int sIndex = index-1; // exclude itself
-      //   if (sIndex - deltaAvgPeriod > startingIndex) {
-      //     double[] maxDs = Utils.getDoubleValues(series, Values.DELTAMAX, sIndex, deltaAvgPeriod);
-      //     double maxDAvg = Utils.getAverage(maxDs);
-      //     double maxDStdev = Utils.calculateStandardDeviation(maxDs);
-      //     double[] minDs = Utils.getDoubleValues(series, Values.DELTAMIN, sIndex, deltaAvgPeriod);
-      //     double minDAvg = Utils.getAverage(minDs);
-      //     double minDStdev = Utils.calculateStandardDeviation(minDs);
-
-      //     int outlierMultiplier = 3;
-      //     if (dc.deltaMax > (maxDAvg + (outlierMultiplier * maxDStdev))) {
-      //       belowSignals.append("\n");
-      //       belowSignals.append(Signals.HDMAX.toString());
-      //     }
-
-      //     if (dc.deltaMin < (minDAvg - (outlierMultiplier * minDStdev))) {
-      //       aboveSignals.append("\n");
-      //       aboveSignals.append(Signals.HDMIN.toString());
-      //     }
-      //   }
-      // }
 
       if (aboveSignals.length() > 0) {
         Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
@@ -452,12 +423,8 @@ public class VGFDeltaExtras extends Study
   enum Direction { Rise, Fall, Inconsistent }
 
   private void debug(long millisTime, Object... args) {
-    var instance = java.time.Instant.ofEpochMilli(millisTime);
-    var zonedDateTime = java.time.ZonedDateTime.ofInstant(instance,java.time.ZoneId.of("US/Pacific"));
-    var formatter = java.time.format.DateTimeFormatter.ofPattern("u-M-d hh:mm:ss a O");
-    var s = zonedDateTime.format(formatter);
     StringBuilder sb = new StringBuilder();
-    sb.append(s);
+    sb.append(Util.formatMMDDYYYYHHMM(millisTime, TimeZone.getTimeZone("US/Pacific")));
     sb.append(" ");
     for (int i = 0; i < args.length; i++) {
       sb.append(args[i]);
