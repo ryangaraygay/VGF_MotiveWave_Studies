@@ -138,6 +138,8 @@ public class VGFDeltaExtras extends Study
     // desc.exportValue(new ValueDescriptor(Values.ALVOL, "Ask Low Vol", null));
   }
 
+  DeltaCalculator dc = null;
+
   @Override
   protected void calculate(int index, DataContext ctx)
   {
@@ -171,12 +173,12 @@ public class VGFDeltaExtras extends Study
       }
     }
 
-    float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString())/100.0f;
-    var highQuantilePrice = high - (r * topBottomRangePerc);
-    var lowQuantilePrice = low + (r * topBottomRangePerc);
-    var minTickSize = series.getInstrument().getTickSize();
+    if (dc == null) {
+      dc = new DeltaCalculator();
+    } else {
+      dc.reset();
+    }
 
-    DeltaCalculator dc = new DeltaCalculator(highQuantilePrice, lowQuantilePrice, high, low, minTickSize);
     series.getInstrument().forEachTick(sTime, eTime, false, dc);
 
     series.setInt(index, Values.DELTACLOSE, dc.deltaClose);
@@ -194,11 +196,15 @@ public class VGFDeltaExtras extends Study
     // even if basic information above is collected bar-by-bar
     // we compute signals only if bar is large enough
     var minimumBarRange = getSettings().getInteger(Names.MINRANGE.toString());
+    var minTickSize = series.getInstrument().getTickSize();
     var largeEnoughBar = (r/minTickSize) >= minimumBarRange;
     if (largeEnoughBar) {
       var totalVolume = series.getVolume(index);
-      int hqvolperc = (int)(dc.highQuantileVolume * 100.0 / totalVolume + 0.5);
-      int lqvolperc = (int)(dc.lowQuantileVolume * 100.0 / totalVolume + 0.5);
+      float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString())/100.0f;
+      var highQuantilePrice = high - (r * topBottomRangePerc);
+      var lowQuantilePrice = low + (r * topBottomRangePerc);
+      int hqvolperc = (int)(dc.getAboveVolume(highQuantilePrice) * 100.0 / totalVolume + 0.5);
+      int lqvolperc = (int)(dc.getBelowVolume(lowQuantilePrice) * 100.0 / totalVolume + 0.5);
       // series.setInt(index, Values.HQVOL, hqvolperc);
       // series.setInt(index, Values.LQVOL, lqvolperc);
 
@@ -228,12 +234,19 @@ public class VGFDeltaExtras extends Study
       // zero prints
       // N-0 on highs
       // 0-N on lows
-      if (dc.bidsAtHigh > 0 && dc.asksAtHigh == 0) {
+      int bidsAtHigh = dc.getBidVolume(high);
+      int asksAtHigh = dc.getAskVolume(high);
+      int bidsAtLow = dc.getBidVolume(low);
+      int asksAtLow = dc.getAskVolume(low);
+      int bidsAtPenultimateLow = dc.getBidVolume(low + (float)minTickSize);
+      int asksAtPenultimateHigh = dc.getAskVolume(high - (float)minTickSize);
+
+      if (bidsAtHigh > 0 && asksAtHigh == 0) {
         aboveSignals.append("\n");
         aboveSignals.append(Signals.ZR.toString());
       }
 
-      if (dc.bidsAtLow == 0 && dc.asksAtLow > 0) {
+      if (bidsAtLow == 0 && asksAtLow > 0) {
         belowSignals.append("\n");
         belowSignals.append(Signals.ZR.toString());
       }
@@ -258,11 +271,11 @@ public class VGFDeltaExtras extends Study
       var exhaustionRatio = getSettings().getInteger(Names.EXHRRATIO.toString());
       int exhaustionUpperBound = getSettings().getInteger(Names.EXHMAX.toString());
       if (downBar) {
-        if (dc.asksAtHigh <= exhaustionUpperBound) {
+        if (asksAtHigh <= exhaustionUpperBound) {
           aboveSignals.append("\n");
           aboveSignals.append(Signals.EXH.toString());
-        } else if (dc.asksAtHigh > 0) {
-          double barRatioHigh = (dc.asksAtPenultimateHigh * 1.0)/(dc.asksAtHigh * 1.0);
+        } else if (asksAtHigh > 0) {
+          double barRatioHigh = (asksAtPenultimateHigh * 1.0)/(asksAtHigh * 1.0);
           if (barRatioHigh < stoppingVolumeRatio) {
             aboveSignals.append("\n");
             aboveSignals.append(Signals.STOPV.toString());
@@ -272,11 +285,11 @@ public class VGFDeltaExtras extends Study
           }
         }
       } else if (upBar) {
-        if (dc.bidsAtLow <= exhaustionUpperBound) {
+        if (bidsAtLow <= exhaustionUpperBound) {
           belowSignals.append("\n");
           belowSignals.append(Signals.EXH.toString());
-        } else if (dc.bidsAtLow > 0) {
-          double barRatioLow = (dc.bidsAtPenultimateLow * 1.0)/(dc.bidsAtLow * 1.0);
+        } else if (bidsAtLow > 0) {
+          double barRatioLow = (bidsAtPenultimateLow * 1.0)/(bidsAtLow * 1.0);
           if (barRatioLow < stoppingVolumeRatio) {
             belowSignals.append("\n");
             belowSignals.append(Signals.STOPV.toString());
