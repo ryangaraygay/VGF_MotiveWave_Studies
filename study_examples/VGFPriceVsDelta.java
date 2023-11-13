@@ -2,7 +2,7 @@ package study_examples;
 
 import java.awt.Color;
 import java.awt.Font;
-import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.motivewave.platform.sdk.common.*;
 import com.motivewave.platform.sdk.common.desc.*;
@@ -19,7 +19,7 @@ import com.motivewave.platform.sdk.study.*;
  studyOverlay=false)
 public class VGFPriceVsDelta extends Study
 {
-  enum Values { DELTACLOSE, CLOSE, CONVDIV, HLEMA1, DCEMA1, HLEMA2, HLEMA3, DCEMA2, DCEMA3, HLTEMA, DCTEMA, CORR };
+  enum Values { DELTACLOSE2, CLOSE, CONVDIV, HLEMA1, DCEMA1, HLEMA2, HLEMA3, DCEMA2, DCEMA3, HLTEMA, DCTEMA, CORR };
 
   enum Names { ENABLED, MAXBARS, CONVDIVPERIOD, CORRPERIOD };
 
@@ -72,7 +72,7 @@ public class VGFPriceVsDelta extends Study
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
     setRuntimeDescriptor(desc);
-    desc.exportValue(new ValueDescriptor(Values.DELTACLOSE, "Delta Close", null));
+    desc.exportValue(new ValueDescriptor(Values.DELTACLOSE2, "Delta Close II", null));
     desc.exportValue(new ValueDescriptor(Values.HLTEMA, "HighLow TEMA", null));
     desc.exportValue(new ValueDescriptor(Values.DCTEMA, "Delta Close TEMA", null));
     desc.exportValue(new ValueDescriptor(Values.CORR, "Correlation", null));
@@ -85,11 +85,22 @@ public class VGFPriceVsDelta extends Study
   }
 
   @Override
+  public void onTick(DataContext ctx, Tick t) {
+    if (t.getTime() > realtimeStartTime) {
+      dcc.onTick(t);
+    }
+  }
+
+  DeltaCloseCalculator dcc = null;
+
+  long realtimeStartTime = Long.MAX_VALUE;
+    
+  @Override
   protected void calculate(int index, DataContext ctx)
   {
     DataSeries series = ctx.getDataSeries();
     int seriesSize = series.size();
-    if (seriesSize == 0) return;
+    if (seriesSize < 2) return;
 
     int barLimit = getSettings().getInteger(Names.MAXBARS.toString());
     int startingIndex = seriesSize - barLimit - 1;
@@ -98,16 +109,27 @@ public class VGFPriceVsDelta extends Study
     long sTime = series.getStartTime(index);
     long eTime = series.getEndTime(index);
 
-    // attempt to get exported deltaclose value
-    int existingDeltaClose = series.getInt(index, Values.DELTACLOSE);
-    int currentDeltaClose = 0;
-    if (existingDeltaClose == 0) {
-      DeltaCloseCalculator dcc = new DeltaCloseCalculator();
-      series.getInstrument().forEachTick(sTime, eTime, false, dcc);
-      currentDeltaClose = dcc.getDeltaClose();
-      series.setInt(index, Values.DELTACLOSE, currentDeltaClose);
-      series.setComplete(index, Values.DELTACLOSE);
+    if (dcc == null) {
+      dcc = new DeltaCloseCalculator();
     }
+
+    if (!series.isBarComplete(index)) return;
+
+    int currentDeltaClose = dcc.getDeltaClose(sTime);
+    if (currentDeltaClose == 0) {
+      // zero generally means we haven't computed on realtime (ontick)
+      // there are cases where we did but delta is really zero but those are very rare
+      // and should be ok to compute this way
+      series.getInstrument().forEachTick(sTime, eTime, false, dcc);
+      currentDeltaClose = dcc.getDeltaClose(sTime);
+      if (realtimeStartTime == Long.MAX_VALUE) {
+        realtimeStartTime = series.getEndTime(series.getEndIndex()-1) + Util.MILLIS_IN_MINUTE; // start RT only a minute after last batch compute (to minimize RT partials)
+      }
+    }
+    
+    dcc.remove(sTime);
+    series.setInt(index, Values.DELTACLOSE2, currentDeltaClose);
+    series.setComplete(index, Values.DELTACLOSE2);
 
     int convdivperiod = getSettings().getInteger(Names.CONVDIVPERIOD.toString());
     double alpha = 2.0/((double)convdivperiod + 1);
@@ -171,20 +193,30 @@ public class VGFPriceVsDelta extends Study
   }
 
   private class DeltaCloseCalculator implements TickOperation {
-    int deltaClose = 0;
-    public int getDeltaClose() {
-      return deltaClose;
+    ConcurrentHashMap<String, Integer> _minuteDeltaClose = new ConcurrentHashMap<>();
+
+    private String keyFormat(long t) {
+      return Util.formatMMDDYYYYHHMM(t); // todo maybe adopt so it can be with non-1min chart, there are assumptions here about 1-min chart for efficiency
+    }
+
+    public int getDeltaClose(long t) {
+      return _minuteDeltaClose.getOrDefault(keyFormat(t), 0);
+    }
+
+    public void remove(long t) {
+      _minuteDeltaClose.remove(keyFormat(t));
     }
 
     @Override
     public void onTick(Tick t) {
-      deltaClose += t.getVolume() * (t.isAskTick() ? 1 : -1);
-    }    
+      String t1 = keyFormat(t.getTime());
+      _minuteDeltaClose.put(t1, _minuteDeltaClose.getOrDefault(t1, 0) + (t.getVolume() * (t.isAskTick() ? 1 : -1)));
+    }
   }
 
   private void debug(long millisTime, Object... args) {
     StringBuilder sb = new StringBuilder();
-    sb.append(Util.formatMMDDYYYYHHMM(millisTime, TimeZone.getTimeZone("US/Pacific")));
+    sb.append(Util.formatMMDDYYYYHHMMSS(millisTime));//, TimeZone.getTimeZone("US/Pacific")));
     sb.append(" ");
     for (int i = 0; i < args.length; i++) {
       sb.append(args[i]);
