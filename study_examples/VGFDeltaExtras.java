@@ -10,8 +10,6 @@ import com.motivewave.platform.sdk.common.desc.*;
 import com.motivewave.platform.sdk.draw.*;
 import com.motivewave.platform.sdk.study.*;
 
-import study_examples.DeltaCalculator.VolumeSequence;
-
 @StudyHeader(
  namespace="org.vgf", 
  id="VGF_DELTA", 
@@ -139,13 +137,23 @@ public class VGFDeltaExtras extends Study
   }
 
   DeltaCalculator dc = null;
+  long realtimeStartTime = Long.MAX_VALUE;
+
+  @Override
+  public void onTick(DataContext ctx, Tick t) {
+    if (t.getTime() > realtimeStartTime) {
+      dc.onTick(t);
+    }
+  }
 
   @Override
   protected void calculate(int index, DataContext ctx)
   {
     DataSeries series = ctx.getDataSeries();
+
     int seriesSize = series.size();
-    if (seriesSize == 0) return;
+    if (seriesSize < 2) return;
+    if (!series.isBarComplete(index)) return;
 
     int barLimit = getSettings().getInteger(Names.MAXBARS.toString());
     int startingIndex = seriesSize - barLimit - 1;
@@ -175,17 +183,23 @@ public class VGFDeltaExtras extends Study
 
     if (dc == null) {
       dc = new DeltaCalculator();
-    } else {
-      dc.reset();
     }
 
-    series.getInstrument().forEachTick(sTime, eTime, false, dc);
+    BarInfo bi = dc.getBarInfo(sTime);
+    if (bi == null) {
+      // means we haven't computed on realtime (ontick)
+      series.getInstrument().forEachTick(sTime, eTime, false, dc);
+      bi = dc.getBarInfo(sTime);
+      if (realtimeStartTime == Long.MAX_VALUE) {
+        realtimeStartTime = series.getEndTime(series.getEndIndex()-1) + Util.MILLIS_IN_MINUTE; // start RT only a minute after last batch compute (to minimize RT partials)
+      }
+    }
+    
+    series.setInt(index, Values.DELTACLOSE, bi.deltaClose);
+    series.setInt(index, Values.DELTAMIN, bi.deltaMin);
+    series.setInt(index, Values.DELTAMAX, bi.deltaMax);
 
-    series.setInt(index, Values.DELTACLOSE, dc.deltaClose);
-    series.setInt(index, Values.DELTAMIN, dc.deltaMin);
-    series.setInt(index, Values.DELTAMAX, dc.deltaMax);
-
-    float poc = dc.getPOC();
+    float poc = bi.getPOC();
     series.setFloat(index, Values.POC, poc);
 
     // series.setInt(index, Values.AHVOL, asksAtHigh);
@@ -203,8 +217,8 @@ public class VGFDeltaExtras extends Study
       float topBottomRangePerc = getSettings().getInteger(Names.BPVOLRANGE.toString())/100.0f;
       var highQuantilePrice = high - (r * topBottomRangePerc);
       var lowQuantilePrice = low + (r * topBottomRangePerc);
-      int hqvolperc = (int)(dc.getAboveVolume(highQuantilePrice) * 100.0 / totalVolume + 0.5);
-      int lqvolperc = (int)(dc.getBelowVolume(lowQuantilePrice) * 100.0 / totalVolume + 0.5);
+      int hqvolperc = (int)(bi.getAboveVolume(highQuantilePrice) * 100.0 / totalVolume + 0.5);
+      int lqvolperc = (int)(bi.getBelowVolume(lowQuantilePrice) * 100.0 / totalVolume + 0.5);
       // series.setInt(index, Values.HQVOL, hqvolperc);
       // series.setInt(index, Values.LQVOL, lqvolperc);
 
@@ -222,9 +236,9 @@ public class VGFDeltaExtras extends Study
       // delta divergence (bar level)
       Color upBidColor = getSettings().getColor(Names.UPBID.toString());
       Color downAskColor = getSettings().getColor(Names.DOWNASK.toString());
-      if (upBar && dc.deltaClose < 0) {
+      if (upBar && bi.deltaClose < 0) {
         series.setPriceBarColor(index, upBidColor);
-      } else if (downBar && dc.deltaClose > 0) {
+      } else if (downBar && bi.deltaClose > 0) {
         series.setPriceBarColor(index, downAskColor);
       }
 
@@ -234,12 +248,12 @@ public class VGFDeltaExtras extends Study
       // zero prints
       // N-0 on highs
       // 0-N on lows
-      int bidsAtHigh = dc.getBidVolume(high);
-      int asksAtHigh = dc.getAskVolume(high);
-      int bidsAtLow = dc.getBidVolume(low);
-      int asksAtLow = dc.getAskVolume(low);
-      int bidsAtPenultimateLow = dc.getBidVolume(low + (float)minTickSize);
-      int asksAtPenultimateHigh = dc.getAskVolume(high - (float)minTickSize);
+      int bidsAtHigh = bi.getBidVolume(high);
+      int asksAtHigh = bi.getAskVolume(high);
+      int bidsAtLow = bi.getBidVolume(low);
+      int asksAtLow = bi.getAskVolume(low);
+      int bidsAtPenultimateLow = bi.getBidVolume(low + (float)minTickSize);
+      int asksAtPenultimateHigh = bi.getAskVolume(high - (float)minTickSize);
 
       if (bidsAtHigh > 0 && asksAtHigh == 0) {
         aboveSignals.append("\n");
@@ -256,11 +270,11 @@ public class VGFDeltaExtras extends Study
       int priorDeltaMax = series.getInt(index - 1, Values.DELTAMAX);
       
       // delta flip
-      if ((priorDeltaClose > 0 && dc.deltaClose < 0) || (priorDeltaClose < 0 && dc.deltaClose > 0)) {
-        if ((dc.deltaClose == dc.deltaMin) && priorDeltaClose == priorDeltaMax) {
+      if ((priorDeltaClose > 0 && bi.deltaClose < 0) || (priorDeltaClose < 0 && bi.deltaClose > 0)) {
+        if ((bi.deltaClose == bi.deltaMin) && priorDeltaClose == priorDeltaMax) {
           aboveSignals.append("\n");
           aboveSignals.append(priorDeltaMin == 0 ? Signals.FLIPX : Signals.FLIP);
-        } else if ((dc.deltaClose == dc.deltaMax) && priorDeltaClose == priorDeltaMin) {
+        } else if ((bi.deltaClose == bi.deltaMax) && priorDeltaClose == priorDeltaMin) {
           belowSignals.append("\n");
           belowSignals.append(priorDeltaMax == 0 ? Signals.FLIPX : Signals.FLIP);
         }
@@ -304,7 +318,7 @@ public class VGFDeltaExtras extends Study
       int deltaSequenceCount = getSettings().getInteger(Names.RISEFALLBARS.toString());
       int[] deltas = Utils.getIntValues(series, Values.DELTACLOSE, index, deltaSequenceCount);
 
-      Direction d = evaluateDirection(deltas);
+      Direction d = Utils.evaluateDirection(deltas);
       if (d == Direction.Rise) {
         belowSignals.append("\n");
         belowSignals.append(Signals.RISE.toString());
@@ -319,10 +333,10 @@ public class VGFDeltaExtras extends Study
         double localLow = series.lowest(index-1, newXLookback, Enums.BarInput.LOW);
 
         // delta divergence
-        if (localLow > low && upBar && dc.deltaClose > 0) {
+        if (localLow > low && upBar && bi.deltaClose > 0) {
           belowSignals.append("\n+");
           belowSignals.append(Signals.DIV.toString());
-        } else if (localHigh < high && downBar && dc.deltaClose < 0) {
+        } else if (localHigh < high && downBar && bi.deltaClose < 0) {
           aboveSignals.append("\n-");
           aboveSignals.append(Signals.DIV.toString());
         }
@@ -339,18 +353,18 @@ public class VGFDeltaExtras extends Study
       if (priorPOC != null) {
         int deltaTrapMin = getSettings().getInteger(Names.DTRAP.toString());
         var anteDelta = series.getInt(index-2, Values.DELTACLOSE);
-        if (anteDelta < (-1 * deltaTrapMin) && (priorDeltaClose + dc.deltaClose + anteDelta) > 0 &&
+        if (anteDelta < (-1 * deltaTrapMin) && (priorDeltaClose + bi.deltaClose + anteDelta) > 0 &&
             series.getClose(index-2) < series.getOpen(index-2) &&
             series.getClose(index-1) > series.getOpen(index-1) && priorDeltaClose > 0 && 
-            upBar && dc.deltaClose > 0 &&
+            upBar && bi.deltaClose > 0 &&
             poc > (priorPOC + requiredGapUpOrDown)) {
           belowSignals.append("\n");
           belowSignals.append(Signals.TRAP.toString());
         } else if (anteDelta > deltaTrapMin && 
-            (priorDeltaClose + dc.deltaClose + anteDelta) < 0 &&
+            (priorDeltaClose + bi.deltaClose + anteDelta) < 0 &&
             series.getClose(index-2) > series.getOpen(index-2) &&
             series.getClose(index-1) < series.getOpen(index-1) && priorDeltaClose < 0 &&
-            downBar && dc.deltaClose < 0 &&
+            downBar && bi.deltaClose < 0 &&
             poc < (priorPOC - requiredGapUpOrDown)) {
           aboveSignals.append("\n");
           aboveSignals.append(Signals.TRAP.toString());
@@ -358,7 +372,7 @@ public class VGFDeltaExtras extends Study
       }
 
       int requiredVolumeSequence = 5; // todo user configurable volume sequence (default 5)
-      VolumeSequence volumeSeq = dc.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
+      VolumeSequence volumeSeq = bi.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
       if (volumeSeq == VolumeSequence.Bullish) {
           belowSignals.append("\n");
           belowSignals.append(Signals.VOLSEQ.toString());
@@ -368,7 +382,7 @@ public class VGFDeltaExtras extends Study
       }
 
       int deltaCloseStrength = 95; // todo make user configurable deltaclose strength (default 95)
-      int deltaClosePerc = dc.getCloseRangePerc();
+      int deltaClosePerc = bi.getCloseRangePerc();
       if (deltaClosePerc > deltaCloseStrength) {
         Coordinate c = new Coordinate(sTime, high);
         Marker m = new Marker(c, Position.TOP_RIGHT, getSettings().getMarker(Names.DCLOSERATIOUP.toString()));
@@ -401,39 +415,9 @@ public class VGFDeltaExtras extends Study
     }
 
     series.setComplete(index);
+
+    dc.remove(sTime); // we have and will use info so we can clear for memory optimization
   }
-
-  private static Direction evaluateDirection(int[] arr) {
-      int oldValue = arr[0];
-      boolean decreasing = true; // assume until broken
-      boolean increasing = true; // assume until broken
-      int deltaSequenceCount = arr.length;
-      for (int i = 1; i < deltaSequenceCount; i++) {
-          int newValue = arr[i];
-          System.err.println(i + " " + newValue);
-          if (newValue > oldValue) {
-              decreasing &= false;
-          } else if (newValue < oldValue) {
-              increasing &= false;
-          } else if (newValue == oldValue) {
-              decreasing &= false;
-              increasing &= false;
-          }
-
-          oldValue = newValue;
-          oldValue = newValue;
-      }
-
-      if (increasing) {
-          return Direction.Rise;
-      } else if(decreasing) {
-          return Direction.Fall;
-      } else {
-          return Direction.Inconsistent;
-      }
-  }
-
-  enum Direction { Rise, Fall, Inconsistent }
 
   private void debug(long millisTime, Object... args) {
     StringBuilder sb = new StringBuilder();

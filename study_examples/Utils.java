@@ -1,7 +1,6 @@
 package study_examples;
 
 import java.util.DoubleSummaryStatistics;
-
 import com.motivewave.platform.sdk.common.DataSeries;
 
 public class Utils {
@@ -125,5 +124,35 @@ public class Utils {
             returnValue = oldValue + (alpha * (returnValue - oldValue));
         }
         return returnValue;
+    }
+
+    public static Direction evaluateDirection(int[] arr) {
+        int oldValue = arr[0];
+        boolean decreasing = true; // assume until broken
+        boolean increasing = true; // assume until broken
+        int deltaSequenceCount = arr.length;
+        for (int i = 1; i < deltaSequenceCount; i++) {
+            int newValue = arr[i];
+            System.err.println(i + " " + newValue);
+            if (newValue > oldValue) {
+                decreasing &= false;
+            } else if (newValue < oldValue) {
+                increasing &= false;
+            } else if (newValue == oldValue) {
+                decreasing &= false;
+                increasing &= false;
+            }
+  
+            oldValue = newValue;
+            oldValue = newValue;
+        }
+  
+        if (increasing) {
+            return Direction.Rise;
+        } else if(decreasing) {
+            return Direction.Fall;
+        } else {
+            return Direction.Inconsistent;
+        }
     }
 }

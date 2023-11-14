@@ -2,7 +2,6 @@ package study_examples;
 
 import java.awt.Color;
 import java.awt.Font;
-import java.util.concurrent.ConcurrentHashMap;
 
 import com.motivewave.platform.sdk.common.*;
 import com.motivewave.platform.sdk.common.desc.*;
@@ -101,6 +100,7 @@ public class VGFPriceVsDelta extends Study
     DataSeries series = ctx.getDataSeries();
     int seriesSize = series.size();
     if (seriesSize < 2) return;
+    if (!series.isBarComplete(index)) return;
 
     int barLimit = getSettings().getInteger(Names.MAXBARS.toString());
     int startingIndex = seriesSize - barLimit - 1;
@@ -112,8 +112,6 @@ public class VGFPriceVsDelta extends Study
     if (dcc == null) {
       dcc = new DeltaCloseCalculator();
     }
-
-    if (!series.isBarComplete(index)) return;
 
     int currentDeltaClose = dcc.getDeltaClose(sTime);
     if (currentDeltaClose == 0) {
@@ -127,7 +125,6 @@ public class VGFPriceVsDelta extends Study
       }
     }
     
-    dcc.remove(sTime);
     series.setInt(index, Values.DELTACLOSE2, currentDeltaClose);
     series.setComplete(index, Values.DELTACLOSE2);
 
@@ -190,28 +187,8 @@ public class VGFPriceVsDelta extends Study
     series.setDouble(index, Values.CONVDIV, value);
 
     series.setComplete(index);
-  }
 
-  private class DeltaCloseCalculator implements TickOperation {
-    ConcurrentHashMap<String, Integer> _minuteDeltaClose = new ConcurrentHashMap<>();
-
-    private String keyFormat(long t) {
-      return Util.formatMMDDYYYYHHMM(t); // todo maybe adopt so it can be with non-1min chart, there are assumptions here about 1-min chart for efficiency
-    }
-
-    public int getDeltaClose(long t) {
-      return _minuteDeltaClose.getOrDefault(keyFormat(t), 0);
-    }
-
-    public void remove(long t) {
-      _minuteDeltaClose.remove(keyFormat(t));
-    }
-
-    @Override
-    public void onTick(Tick t) {
-      String t1 = keyFormat(t.getTime());
-      _minuteDeltaClose.put(t1, _minuteDeltaClose.getOrDefault(t1, 0) + (t.getVolume() * (t.isAskTick() ? 1 : -1)));
-    }
+    dcc.remove(sTime); // we have consumed the info so ok to clear for memory optimization
   }
 
   private void debug(long millisTime, Object... args) {
