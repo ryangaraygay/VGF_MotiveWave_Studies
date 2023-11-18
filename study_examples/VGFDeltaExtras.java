@@ -21,7 +21,7 @@ import com.motivewave.platform.sdk.study.*;
  studyOverlay=false)
 public class VGFDeltaExtras extends Study
 {
-  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL, POC, AVGDMIN, AVGDMAX };
+  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL, POC, AVGDMIN, AVGDMAX, PVEMA1, PVEMA2, PVEMA3, PVTEMA };
 
   enum Names 
   { 
@@ -38,9 +38,6 @@ public class VGFDeltaExtras extends Study
     ENABLED, 
     RISEFALLBARS, 
     DDIVLOOKBACK,
-    DOJIALPHA, 
-    DOJIBODYMAXPERC, 
-    DOJIWICKMINPERC, 
     STOPVRATIO, 
     EXHRRATIO, 
     EXHMAX,
@@ -52,7 +49,13 @@ public class VGFDeltaExtras extends Study
     EMA1_PERIOD,
     EMA2_PERIOD,
     DCLOSERATIOUP,
-    DCLOSERATIODOWN
+    DCLOSERATIODOWN,
+    TEMAPERIOD,
+    WEAKUP,
+    WEAKDOWN,
+    MESSYUP,
+    MESSYDOWN,
+    MESSYTHRESHOLD
   };
 
   enum Signals {
@@ -85,13 +88,16 @@ public class VGFDeltaExtras extends Study
     general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 6, 1, 10, 1));
     tab.addGroup(general);
     
-    SettingGroup doji = new SettingGroup("Doji");
-    doji.addRow(new IntegerDescriptor(Names.DOJIALPHA.toString(), "Color Alpha", 100, 0, 255, 1));
-    doji.addRow(new IntegerDescriptor(Names.DOJIBODYMAXPERC.toString(), "Body Max %", 40, 1, 100, 1));
-    doji.addRow(new IntegerDescriptor(Names.DOJIWICKMINPERC.toString(), "Wick Min %", 10, 1, 100, 1));
-    tab.addGroup(doji);
+    SettingGroup priceVol = new SettingGroup("Price Volume");
+    priceVol.addRow(new IntegerDescriptor(Names.TEMAPERIOD.toString(), "TEMA Period", 21, 5, 200, 1));
+    priceVol.addRow(new ColorDescriptor(Names.WEAKUP.toString(), "Weak Up Color", new Color(144, 238, 144)));
+    priceVol.addRow(new ColorDescriptor(Names.WEAKDOWN.toString(), "Weak Down Color", new Color(255, 192, 203)));
+    priceVol.addRow(new IntegerDescriptor(Names.MESSYTHRESHOLD.toString(), "Messy Threshold", 1500, 1, 10000, 1));
+    priceVol.addRow(new ColorDescriptor(Names.MESSYUP.toString(), "Messy Up Color", Color.GREEN.darker().darker()));
+    priceVol.addRow(new ColorDescriptor(Names.MESSYDOWN.toString(), "Messy Down Color", Color.RED.darker().darker()));
+    tab.addGroup(priceVol);
 
-    SettingGroup divergence = new SettingGroup("Divergence");
+    SettingGroup divergence = new SettingGroup("Single Bar Divergence");
     divergence.addRow(new ColorDescriptor(Names.UPBID.toString(), "Up/@Bid Color", Color.CYAN));
     divergence.addRow(new ColorDescriptor(Names.DOWNASK.toString(), "Down/@Ask Color", Color.MAGENTA));
     divergence.addRow(new IntegerDescriptor(Names.DDIVLOOKBACK.toString(), "Lookback for Recent H/L", 5, 2, 50, 1));
@@ -101,7 +107,6 @@ public class VGFDeltaExtras extends Study
     bp.addRow
       (new MarkerDescriptor(Names.BPVOL.toString(), "Marker", Enums.MarkerType.SQUARE, Enums.Size.LARGE, Color.GRAY, Color.GRAY, true, true)
       ,(new IntegerDescriptor(Names.BPVOLOFFSET.toString(), "Offset", 0, 0, 10, 1)));
-    
     bp.addRow(new IntegerDescriptor(Names.BPVOLTHRESH.toString(), "Volume %", 62, 1, 100, 1));
     bp.addRow(new IntegerDescriptor(Names.BPVOLRANGE.toString(), "Within Upper/Lower %", 50, 1, 100, 1));
     tab.addGroup(bp);
@@ -128,12 +133,7 @@ public class VGFDeltaExtras extends Study
     desc.exportValue(new ValueDescriptor(Values.DELTAMIN, "Delta Min", null));
     desc.exportValue(new ValueDescriptor(Values.DELTAMAX, "Delta Max", null));
     desc.exportValue(new ValueDescriptor(Values.POC, "POC", null));
-    // desc.exportValue(new ValueDescriptor(Values.HQVOL, "Upper Vol %", null));
-    // desc.exportValue(new ValueDescriptor(Values.LQVOL, "Lower Vol %", null));
-    // desc.exportValue(new ValueDescriptor(Values.BHVOL, "Bid High Vol", null));
-    // desc.exportValue(new ValueDescriptor(Values.AHVOL, "Ask High Vol", null));
-    // desc.exportValue(new ValueDescriptor(Values.BLVOL, "Bid Low Vol", null));
-    // desc.exportValue(new ValueDescriptor(Values.ALVOL, "Ask Low Vol", null));
+    desc.exportValue(new ValueDescriptor(Values.PVTEMA, "PVTEMA", null));
   }
 
   DeltaCalculator dc = null;
@@ -169,17 +169,53 @@ public class VGFDeltaExtras extends Study
     boolean downBar = close < open;
 
     var r = series.getRange(index);
-    var body = Math.abs(close - open);
-    if (body != 0) {
-      var tail = Math.min(open, close) - low;
-      var nose = high - Math.max(open, close);
-      var dojiBodyThresholdPerc = getSettings().getInteger(Names.DOJIBODYMAXPERC.toString()) / 100.0;
-      var dojiWickThresholdPerc = getSettings().getInteger(Names.DOJIWICKMINPERC.toString()) / 100.0;
-      if (body < (r * dojiBodyThresholdPerc) && tail > r * dojiWickThresholdPerc && nose > r * dojiWickThresholdPerc) {
-        Color defaultBarColor = (close == open) ? ctx.getDefaults().getBarNeutralColor() : upBar ? ctx.getDefaults().getBarUpColor() : ctx.getDefaults().getBarDownColor();
-        series.setPriceBarColor(index, new Color(defaultBarColor.getRed(), defaultBarColor.getGreen(), defaultBarColor.getBlue(), getSettings().getInteger(Names.DOJIALPHA.toString(), index)));
+
+    // Triple EMA of candle body * volume
+    // todo see if this can be done using Util.schedule
+    int emaPeriod = getSettings().getInteger(Names.TEMAPERIOD.toString());
+    double alpha = 2.0/((double)emaPeriod + 1);
+
+    Double oldEMA1 = series.getDouble(index - 1, Values.PVEMA1);
+    double newEMA1 = (close - open) * series.getVolume(index);
+    double ema1 = Utils.getEMA(newEMA1, oldEMA1, alpha);
+    series.setDouble(index, Values.PVEMA1, ema1);
+
+    Double oldEMA2 = series.getDouble(index - 1, Values.PVEMA2);
+    double newEMA2 = ema1;
+    double ema2 = Utils.getEMA(newEMA2, oldEMA2, alpha);
+    series.setDouble(index, Values.PVEMA2, ema2);
+
+    Double oldEMA3 = series.getDouble(index - 1, Values.PVEMA3);
+    double newEMA3 = ema2;
+    double ema3 = Utils.getEMA(newEMA3, oldEMA3, alpha);
+    series.setDouble(index, Values.PVEMA3, ema3);
+
+    double pvTEMA = (3 * ema1) - (3 * ema2) + (ema3);
+    series.setDouble(index, Values.PVTEMA, pvTEMA);
+
+    // set barcolor based on price-volume tema
+    int messyThreshold = getSettings().getInteger(Names.MESSYTHRESHOLD.toString());
+    boolean messy = Math.abs(pvTEMA) < messyThreshold;
+    if (messy) {
+      Double tema_2 = series.getDouble(index - 2, Values.PVTEMA);
+      Double tema_1 = series.getDouble(index - 1, Values.PVTEMA);
+      if (tema_2 != null && tema_1 != null) {
+        messy = Math.abs(tema_2) < messyThreshold && Math.abs(tema_1) < messyThreshold;
       }
     }
+
+    Color pvColor = upBar ? ctx.getDefaults().getBarUpColor() : ctx.getDefaults().getBarDownColor(); // ignore doji for now
+    if (messy && upBar) {
+      pvColor = getSettings().getColor(Names.MESSYUP.toString());
+    } else if (messy && !upBar) {
+      pvColor  = getSettings().getColor(Names.MESSYDOWN.toString());
+    } else if (upBar && pvTEMA < 0) {
+      pvColor = getSettings().getColor(Names.WEAKUP.toString());
+    } else if (!upBar && pvTEMA > 0) {
+      pvColor = getSettings().getColor(Names.WEAKDOWN.toString());
+    }
+
+    series.setPriceBarColor(index, pvColor);
 
     if (dc == null) {
       dc = new DeltaCalculator();
@@ -202,11 +238,6 @@ public class VGFDeltaExtras extends Study
     float poc = bi.getPOC();
     series.setFloat(index, Values.POC, poc);
 
-    // series.setInt(index, Values.AHVOL, asksAtHigh);
-    // series.setInt(index, Values.ALVOL, asksAtLow);
-    // series.setInt(index, Values.BHVOL, bidsAtHigh);
-    // series.setInt(index, Values.BLVOL, bidsAtLow);
-
     // even if basic information above is collected bar-by-bar
     // we compute signals only if bar is large enough
     var minimumBarRange = getSettings().getInteger(Names.MINRANGE.toString());
@@ -219,8 +250,6 @@ public class VGFDeltaExtras extends Study
       var lowQuantilePrice = low + (r * topBottomRangePerc);
       int hqvolperc = (int)(bi.getAboveVolume(highQuantilePrice) * 100.0 / totalVolume + 0.5);
       int lqvolperc = (int)(bi.getBelowVolume(lowQuantilePrice) * 100.0 / totalVolume + 0.5);
-      // series.setInt(index, Values.HQVOL, hqvolperc);
-      // series.setInt(index, Values.LQVOL, lqvolperc);
 
       int volThreshold = getSettings().getInteger(Names.BPVOLTHRESH.toString());
       if (hqvolperc > volThreshold || lqvolperc > volThreshold) {
