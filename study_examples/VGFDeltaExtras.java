@@ -65,11 +65,11 @@ public class VGFDeltaExtras extends Study
     FLIPX, // extreme flip
     FLIP,
     EXH,
-    ZR,
+    ZEROP,
     DIV,
     STOPV, // stopping volume
-    POCG,
-    VOLSEQ,
+    PGAP,
+    VSEQ,
     HDMAX,
     HDMIN
   }
@@ -286,12 +286,12 @@ public class VGFDeltaExtras extends Study
 
       if (bidsAtHigh > 0 && asksAtHigh == 0) {
         aboveSignals.append("\n");
-        aboveSignals.append(Signals.ZR.toString());
+        aboveSignals.append(Signals.ZEROP.toString());
       }
 
       if (bidsAtLow == 0 && asksAtLow > 0) {
         belowSignals.append("\n");
-        belowSignals.append(Signals.ZR.toString());
+        belowSignals.append(Signals.ZEROP.toString());
       }
 
       int priorDeltaClose = series.getInt(index - 1, Values.DELTACLOSE);
@@ -404,10 +404,10 @@ public class VGFDeltaExtras extends Study
       VolumeSequence volumeSeq = bi.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
       if (volumeSeq == VolumeSequence.Bullish) {
           belowSignals.append("\n");
-          belowSignals.append(Signals.VOLSEQ.toString());
+          belowSignals.append(Signals.VSEQ.toString());
       } else if (volumeSeq == VolumeSequence.Bearish) {
           aboveSignals.append("\n");
-          aboveSignals.append(Signals.VOLSEQ.toString());
+          aboveSignals.append(Signals.VSEQ.toString());
       }
 
       int deltaCloseStrength = 95; // todo make user configurable deltaclose strength (default 95)
