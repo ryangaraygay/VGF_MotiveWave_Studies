@@ -21,7 +21,7 @@ import com.motivewave.platform.sdk.study.*;
  studyOverlay=false)
 public class VGFDeltaExtras extends Study
 {
-  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL, POC, AVGDMIN, AVGDMAX, PVEMA1, PVEMA2, PVEMA3, PVTEMA };
+  enum Values { DELTAMIN, DELTAMAX, DELTACLOSE, LQVOL, HQVOL, BHVOL, BLVOL, AHVOL, ALVOL, POC, AVGDMIN, AVGDMAX };
 
   enum Names 
   { 
@@ -49,13 +49,7 @@ public class VGFDeltaExtras extends Study
     EMA1_PERIOD,
     EMA2_PERIOD,
     DCLOSERATIOUP,
-    DCLOSERATIODOWN,
-    TEMAPERIOD,
-    WEAKUP,
-    WEAKDOWN,
-    MESSYUP,
-    MESSYDOWN,
-    MESSYTHRESHOLD
+    DCLOSERATIODOWN
   };
 
   enum Signals {
@@ -87,15 +81,6 @@ public class VGFDeltaExtras extends Study
     general.addRow(new IntegerDescriptor(Names.MAXBARS.toString(), "Limit to Last N Bars", 60, 1, 10000, 1));
     general.addRow(new IntegerDescriptor(Names.MINRANGE.toString(), "Minimum Bar Range (ticks)", 6, 1, 10, 1));
     tab.addGroup(general);
-    
-    SettingGroup priceVol = new SettingGroup("Price Volume");
-    priceVol.addRow(new IntegerDescriptor(Names.TEMAPERIOD.toString(), "TEMA Period", 21, 5, 200, 1));
-    priceVol.addRow(new ColorDescriptor(Names.WEAKUP.toString(), "Weak Up Color", new Color(144, 238, 144)));
-    priceVol.addRow(new ColorDescriptor(Names.WEAKDOWN.toString(), "Weak Down Color", new Color(255, 192, 203)));
-    priceVol.addRow(new IntegerDescriptor(Names.MESSYTHRESHOLD.toString(), "Messy Threshold", 1500, 1, 10000, 1));
-    priceVol.addRow(new ColorDescriptor(Names.MESSYUP.toString(), "Messy Up Color", Color.GREEN.darker().darker()));
-    priceVol.addRow(new ColorDescriptor(Names.MESSYDOWN.toString(), "Messy Down Color", Color.RED.darker().darker()));
-    tab.addGroup(priceVol);
 
     SettingGroup divergence = new SettingGroup("Single Bar Divergence");
     divergence.addRow(new ColorDescriptor(Names.UPBID.toString(), "Up/@Bid Color", Color.CYAN));
@@ -124,7 +109,6 @@ public class VGFDeltaExtras extends Study
     others.addRow(new MarkerDescriptor(Names.DCLOSERATIOUP.toString(), "Delta Close Near Max", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.DCLOSERATIODOWN.toString(), "Delta Close Near Min", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.RED.darker(), Color.RED.darker(), true, true));
     
-
     tab.addGroup(others);
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
@@ -133,7 +117,6 @@ public class VGFDeltaExtras extends Study
     desc.exportValue(new ValueDescriptor(Values.DELTAMIN, "Delta Min", null));
     desc.exportValue(new ValueDescriptor(Values.DELTAMAX, "Delta Max", null));
     desc.exportValue(new ValueDescriptor(Values.POC, "POC", null));
-    desc.exportValue(new ValueDescriptor(Values.PVTEMA, "PVTEMA", null));
   }
 
   DeltaCalculator dc = null;
@@ -169,53 +152,6 @@ public class VGFDeltaExtras extends Study
     boolean downBar = close < open;
 
     var r = series.getRange(index);
-
-    // Triple EMA of candle body * volume
-    // todo see if this can be done using Util.schedule
-    int emaPeriod = getSettings().getInteger(Names.TEMAPERIOD.toString());
-    double alpha = 2.0/((double)emaPeriod + 1);
-
-    Double oldEMA1 = series.getDouble(index - 1, Values.PVEMA1);
-    double newEMA1 = (close - open) * series.getVolume(index);
-    double ema1 = Utils.getEMA(newEMA1, oldEMA1, alpha);
-    series.setDouble(index, Values.PVEMA1, ema1);
-
-    Double oldEMA2 = series.getDouble(index - 1, Values.PVEMA2);
-    double newEMA2 = ema1;
-    double ema2 = Utils.getEMA(newEMA2, oldEMA2, alpha);
-    series.setDouble(index, Values.PVEMA2, ema2);
-
-    Double oldEMA3 = series.getDouble(index - 1, Values.PVEMA3);
-    double newEMA3 = ema2;
-    double ema3 = Utils.getEMA(newEMA3, oldEMA3, alpha);
-    series.setDouble(index, Values.PVEMA3, ema3);
-
-    double pvTEMA = (3 * ema1) - (3 * ema2) + (ema3);
-    series.setDouble(index, Values.PVTEMA, pvTEMA);
-
-    // set barcolor based on price-volume tema
-    int messyThreshold = getSettings().getInteger(Names.MESSYTHRESHOLD.toString());
-    boolean messy = Math.abs(pvTEMA) < messyThreshold;
-    if (messy) {
-      Double tema_2 = series.getDouble(index - 2, Values.PVTEMA);
-      Double tema_1 = series.getDouble(index - 1, Values.PVTEMA);
-      if (tema_2 != null && tema_1 != null) {
-        messy = Math.abs(tema_2) < messyThreshold && Math.abs(tema_1) < messyThreshold;
-      }
-    }
-
-    Color pvColor = upBar ? ctx.getDefaults().getBarUpColor() : ctx.getDefaults().getBarDownColor(); // ignore doji for now
-    if (messy && upBar) {
-      pvColor = getSettings().getColor(Names.MESSYUP.toString());
-    } else if (messy && !upBar) {
-      pvColor  = getSettings().getColor(Names.MESSYDOWN.toString());
-    } else if (upBar && pvTEMA < 0) {
-      pvColor = getSettings().getColor(Names.WEAKUP.toString());
-    } else if (!upBar && pvTEMA > 0) {
-      pvColor = getSettings().getColor(Names.WEAKDOWN.toString());
-    }
-
-    series.setPriceBarColor(index, pvColor);
 
     if (dc == null) {
       dc = new DeltaCalculator();
