@@ -41,7 +41,7 @@ public class VGFPriceVsDelta extends Study
     convdiv.addRow(new ColorDescriptor(Names.DOWNCONV.toString(), "Negative Convergence", new Color(139, 0, 0, 125)));
     convdiv.addRow(new ColorDescriptor(Names.UPDIV.toString(), "Up Divergence", new Color(0, 255, 255, 125)));
     convdiv.addRow(new ColorDescriptor(Names.DOWNDIV.toString(), "Down Divergence", new Color(255, 0, 255, 125)));
-    convdiv.addRow(new IntegerDescriptor(Names.MESSYTHRESHOLD.toString(), "Messy Threshold", 100, 1, 10000, 1));
+    convdiv.addRow(new IntegerDescriptor(Names.MESSYTHRESHOLD.toString(), "Messy Threshold", 50, 1, 10000, 1));
     tab.addGroup(convdiv);
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
