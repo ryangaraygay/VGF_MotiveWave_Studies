@@ -17,9 +17,9 @@ import com.motivewave.platform.sdk.study.*;
  studyOverlay=false)
 public class VGFPriceVsDelta extends Study
 {
-  enum Values { DELTACLOSE2, HLEMA1, DCEMA1, HLEMA2, HLEMA3, DCEMA2, DCEMA3, HLTEMA, DCTEMA, CORR, PDTEMA };
+  enum Values { DELTACLOSE2, HLEMA1, DCEMA1, HLEMA2, HLEMA3, DCEMA2, DCEMA3, HLTEMA, DCTEMA, CORR, PDTEMA, CONVDIV };
 
-  enum Names { ENABLED, MAXBARS, CONVDIVPERIOD, PDBAR, UPCONV, DOWNCONV, UPDIV, DOWNDIV, MESSY, MESSYTHRESHOLD };
+  enum Names { ENABLED, MAXBARS, CONVDIVPERIOD, PDBAR, UPCONV, DOWNCONV, UPDIV, DOWNDIV, MESSYUP, MESSYDOWN, MESSYTHRESHOLD };
 
   @Override
   public void initialize(Defaults defaults)
@@ -37,12 +37,11 @@ public class VGFPriceVsDelta extends Study
     SettingGroup convdiv = new SettingGroup("Convergence / Divergence");
     convdiv.addRow(new IntegerDescriptor(Names.CONVDIVPERIOD.toString(), "Period", 21, 5, 200, 1));
     convdiv.addRow(new BarDescriptor(Names.PDBAR.toString(), "Bars", defaults.getBlue(), true, false));
-    convdiv.addRow(new ColorDescriptor(Names.UPCONV.toString(), "Positive Convergence", new Color(0, 100, 0, 75)));
-    convdiv.addRow(new ColorDescriptor(Names.DOWNCONV.toString(), "Negative Convergence", new Color(139, 0, 0, 75)));
-    convdiv.addRow(new ColorDescriptor(Names.UPDIV.toString(), "Up Divergence", new Color(0, 255, 255, 75)));
-    convdiv.addRow(new ColorDescriptor(Names.DOWNDIV.toString(), "Down Divergence", new Color(255, 0, 255, 75)));
+    convdiv.addRow(new ColorDescriptor(Names.UPCONV.toString(), "Positive Convergence", new Color(0, 100, 0, 125)));
+    convdiv.addRow(new ColorDescriptor(Names.DOWNCONV.toString(), "Negative Convergence", new Color(139, 0, 0, 125)));
+    convdiv.addRow(new ColorDescriptor(Names.UPDIV.toString(), "Up Divergence", new Color(0, 255, 255, 125)));
+    convdiv.addRow(new ColorDescriptor(Names.DOWNDIV.toString(), "Down Divergence", new Color(255, 0, 255, 125)));
     convdiv.addRow(new IntegerDescriptor(Names.MESSYTHRESHOLD.toString(), "Messy Threshold", 100, 1, 10000, 1));
-    convdiv.addRow(new ColorDescriptor(Names.MESSY.toString(), "Messy", new Color(128, 128, 128, 125)));
     tab.addGroup(convdiv);
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
@@ -51,8 +50,9 @@ public class VGFPriceVsDelta extends Study
     desc.exportValue(new ValueDescriptor(Values.HLTEMA, "HighLow TEMA", null));
     desc.exportValue(new ValueDescriptor(Values.DCTEMA, "Delta Close TEMA", null));
     desc.exportValue(new ValueDescriptor(Values.PDTEMA, "Price-Delta TEMA", null));
-    desc.declareBars(Values.PDTEMA, Names.PDBAR.toString());
-    desc.setRangeKeys(Values.PDTEMA);
+    desc.declareBars(Values.CONVDIV, Names.PDBAR.toString());
+    desc.setFixedTopValue(10);
+    desc.setFixedBottomValue(-10);
   }
 
   @Override
@@ -144,21 +144,34 @@ public class VGFPriceVsDelta extends Study
     boolean upConvergence = hlTEMA > 0 && deltaTEMA > 0;
     boolean downConvergence = hlTEMA < 0 && deltaTEMA < 0;
     int messyThreshold = getSettings().getInteger(Names.MESSYTHRESHOLD.toString());
-    int sign = upConvergence ? 1 : (downConvergence ? -1 : (hlTEMA > 0 ? 1 : -1));  
     double pdTEMAUnsigned = Math.abs(hlTEMA * deltaTEMA);
+    int sign = upConvergence ? 1 : (downConvergence ? -1 : (hlTEMA > 0 ? 1 : -1));  
     double pdTEMA = pdTEMAUnsigned * sign;
-    Color barColor = 
-      pdTEMAUnsigned < messyThreshold ? 
-        getSettings().getColor(Names.MESSY.toString()) 
-        : (upConvergence ? 
-            getSettings().getColor(Names.UPCONV.toString()) 
-            : (downConvergence ? 
-                getSettings().getColor(Names.DOWNCONV.toString()) 
-                : hlTEMA > 0 ?
-                  getSettings().getColor(Names.UPDIV.toString()) 
-                  : getSettings().getColor(Names.DOWNDIV.toString())));
+    boolean messy = pdTEMAUnsigned < messyThreshold;
+    Color barColor = upConvergence ? getSettings().getColor(Names.UPCONV.toString()) 
+        : downConvergence ? getSettings().getColor(Names.DOWNCONV.toString())
+          : hlTEMA > 0 ? getSettings().getColor(Names.UPDIV.toString()) 
+            : getSettings().getColor(Names.DOWNDIV.toString());
+    if (messy) {
+      barColor = barColor.darker().darker();
+    }
+
+    double value = 0;
+    if (messy) {
+      if (hlTEMA > 0) value = 2;
+      else value = -2;
+    } else if (upConvergence) {
+      value = 10;
+    } else if (downConvergence) {
+      value = -10;
+    } else {
+      if (hlTEMA > 0) value = 5;
+      else value = -5;
+    }
+
+    series.setDouble(index, Values.CONVDIV, value);
     series.setDouble(index, Values.PDTEMA, pdTEMA);
-    series.setBarColor(index, Values.PDTEMA, barColor);
+    series.setBarColor(index, Values.CONVDIV, barColor);
 
     series.setComplete(index);
 
