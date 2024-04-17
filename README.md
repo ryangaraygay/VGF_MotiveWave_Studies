@@ -1,4 +1,4 @@
-Custom Indicators I have created for MotiveWave using Java.
+**Custom Indicators I have created for MotiveWave using Java.**
 
 I do not recommend or advice which indicators to use, this is for reference only. Nor provide any trading or investment advice.
 I only use some of them and there is no magic indicator for successful trading.
