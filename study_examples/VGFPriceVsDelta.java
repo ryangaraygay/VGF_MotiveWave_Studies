@@ -152,21 +152,24 @@ public class VGFPriceVsDelta extends Study
         : downConvergence ? getSettings().getColor(Names.DOWNCONV.toString())
           : hlTEMA > 0 ? getSettings().getColor(Names.UPDIV.toString()) 
             : getSettings().getColor(Names.DOWNDIV.toString());
-    if (messy) {
+
+    boolean divergence = !upConvergence && !downConvergence;
+
+    if (messy && !divergence) {
       barColor = barColor.darker().darker();
     }
 
     double value = 0;
-    if (messy) {
+    if (divergence) {
+      if (hlTEMA > 0) value = 5;
+      else value = -5;
+    } else if (messy) {
       if (hlTEMA > 0) value = 2;
       else value = -2;
     } else if (upConvergence) {
       value = 10;
     } else if (downConvergence) {
       value = -10;
-    } else {
-      if (hlTEMA > 0) value = 5;
-      else value = -5;
     }
 
     series.setDouble(index, Values.CONVDIV, value);

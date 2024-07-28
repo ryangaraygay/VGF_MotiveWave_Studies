@@ -49,7 +49,11 @@ public class VGFDeltaExtras extends Study
     EMA1_PERIOD,
     EMA2_PERIOD,
     DCLOSERATIOUP,
-    DCLOSERATIODOWN
+    DCLOSERATIODOWN,
+    EXHU,
+    EXHD,
+    STOPVU,
+    STOPVD
   };
 
   enum Signals {
@@ -59,7 +63,7 @@ public class VGFDeltaExtras extends Study
     FLIPX, // extreme flip
     FLIP,
     EXH,
-    ZEROP,
+    // ZEROP,
     DIV,
     STOPV, // stopping volume
     PGAP,
@@ -102,10 +106,14 @@ public class VGFDeltaExtras extends Study
     others.addRow(new IntegerDescriptor(Names.EXHRRATIO.toString(), "Exhaustion Ratio", 30, 2, 100, 1));
     others.addRow(new IntegerDescriptor(Names.EXHMAX.toString(), "Exhaustion Max", 10, 2, 100, 1));
     others.addRow(new IntegerDescriptor(Names.DTRAP.toString(), "Delta Trap", 200, 100, 10000, 100));
-    others.addRow(new MarkerDescriptor(Names.POCGU.toString(), "POC Gap Up", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
-    others.addRow(new MarkerDescriptor(Names.POCGD.toString(), "POC Gap Down", Enums.MarkerType.CIRCLE, Enums.Size.MEDIUM, Color.RED.darker(), Color.RED.darker(), true, true));
-    others.addRow(new MarkerDescriptor(Names.UPMARKERS.toString(), "Up Markers", Enums.MarkerType.TRIANGLE, Enums.Size.SMALL, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
-    others.addRow(new MarkerDescriptor(Names.DOWNMARKERS.toString(), "Down Markers", Enums.MarkerType.TRIANGLE, Enums.Size.SMALL, Color.RED.darker(), Color.RED.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.POCGU.toString(), "POC Gap Up", Enums.MarkerType.CIRCLE, Enums.Size.LARGE, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.POCGD.toString(), "POC Gap Down", Enums.MarkerType.CIRCLE, Enums.Size.LARGE, Color.RED.darker(), Color.RED.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.EXHU.toString(), "Exhaustion Up", Enums.MarkerType.LINE_ARROW, Enums.Size.SMALL, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.EXHD.toString(), "Exhaustion Down", Enums.MarkerType.LINE_ARROW, Enums.Size.SMALL, Color.RED.darker(), Color.RED.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.STOPVU.toString(), "Stop Volume Up", Enums.MarkerType.ARROW, Enums.Size.VERY_SMALL, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.STOPVD.toString(), "Stop Volume Down", Enums.MarkerType.ARROW, Enums.Size.VERY_SMALL, Color.RED.darker(), Color.RED.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.UPMARKERS.toString(), "Up Markers", Enums.MarkerType.TRIANGLE, Enums.Size.MEDIUM, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.DOWNMARKERS.toString(), "Down Markers", Enums.MarkerType.TRIANGLE, Enums.Size.MEDIUM, Color.RED.darker(), Color.RED.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.DCLOSERATIOUP.toString(), "Delta Close Near Max", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.DCLOSERATIODOWN.toString(), "Delta Close Near Min", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.RED.darker(), Color.RED.darker(), true, true));
     
@@ -213,22 +221,22 @@ public class VGFDeltaExtras extends Study
       // zero prints
       // N-0 on highs
       // 0-N on lows
-      int bidsAtHigh = bi.getBidVolume(high);
+      // int bidsAtHigh = bi.getBidVolume(high);
       int asksAtHigh = bi.getAskVolume(high);
       int bidsAtLow = bi.getBidVolume(low);
-      int asksAtLow = bi.getAskVolume(low);
+      // int asksAtLow = bi.getAskVolume(low);
       int bidsAtPenultimateLow = bi.getBidVolume(low + (float)minTickSize);
       int asksAtPenultimateHigh = bi.getAskVolume(high - (float)minTickSize);
 
-      if (bidsAtHigh > 0 && asksAtHigh == 0) {
-        aboveSignals.append("\n");
-        aboveSignals.append(Signals.ZEROP.toString());
-      }
+      // if (bidsAtHigh > 0 && asksAtHigh == 0) {
+      //   aboveSignals.append("\n");
+      //   aboveSignals.append(Signals.ZEROP.toString());
+      // }
 
-      if (bidsAtLow == 0 && asksAtLow > 0) {
-        belowSignals.append("\n");
-        belowSignals.append(Signals.ZEROP.toString());
-      }
+      // if (bidsAtLow == 0 && asksAtLow > 0) {
+      //   belowSignals.append("\n");
+      //   belowSignals.append(Signals.ZEROP.toString());
+      // }
 
       int priorDeltaClose = series.getInt(index - 1, Values.DELTACLOSE);
       int priorDeltaMin = series.getInt(index - 1, Values.DELTAMIN);
@@ -251,30 +259,24 @@ public class VGFDeltaExtras extends Study
       int exhaustionUpperBound = getSettings().getInteger(Names.EXHMAX.toString());
       if (downBar) {
         if (asksAtHigh <= exhaustionUpperBound) {
-          aboveSignals.append("\n");
-          aboveSignals.append(Signals.EXH.toString());
+          addFigure(new Marker(new Coordinate(sTime, high), Position.RIGHT, getSettings().getMarker(Names.EXHD.toString())));
         } else if (asksAtHigh > 0) {
           double barRatioHigh = (asksAtPenultimateHigh * 1.0)/(asksAtHigh * 1.0);
           if (barRatioHigh < stoppingVolumeRatio) {
-            aboveSignals.append("\n");
-            aboveSignals.append(Signals.STOPV.toString());
+            addFigure(new Marker(new Coordinate(sTime, high), Position.RIGHT, getSettings().getMarker(Names.STOPVD.toString())));
           } else if (barRatioHigh > exhaustionRatio) {
-            aboveSignals.append("\n");
-            aboveSignals.append(Signals.EXH.toString());
+            addFigure(new Marker(new Coordinate(sTime, high), Position.RIGHT, getSettings().getMarker(Names.EXHD.toString())));
           }
         }
       } else if (upBar) {
         if (bidsAtLow <= exhaustionUpperBound) {
-          belowSignals.append("\n");
-          belowSignals.append(Signals.EXH.toString());
+          addFigure(new Marker(new Coordinate(sTime, low), Position.LEFT, getSettings().getMarker(Names.EXHU.toString())));
         } else if (bidsAtLow > 0) {
           double barRatioLow = (bidsAtPenultimateLow * 1.0)/(bidsAtLow * 1.0);
           if (barRatioLow < stoppingVolumeRatio) {
-            belowSignals.append("\n");
-            belowSignals.append(Signals.STOPV.toString());
+            addFigure(new Marker(new Coordinate(sTime, low), Position.LEFT, getSettings().getMarker(Names.STOPVU.toString())));
           } else if (barRatioLow > exhaustionRatio) {
-            belowSignals.append("\n");
-            belowSignals.append(Signals.EXH.toString());
+            addFigure(new Marker(new Coordinate(sTime, low), Position.LEFT, getSettings().getMarker(Names.EXHU.toString())));
           }
         }
       }
@@ -284,10 +286,10 @@ public class VGFDeltaExtras extends Study
       int[] deltas = Utils.getIntValues(series, Values.DELTACLOSE, index, deltaSequenceCount);
 
       Direction d = Utils.evaluateDirection(deltas);
-      if (d == Direction.Rise) {
+      if (d == Direction.Rise && upBar) {
         belowSignals.append("\n");
         belowSignals.append(Signals.RISE.toString());
-      } else if (d == Direction.Fall) {
+      } else if (d == Direction.Fall && downBar) {
         aboveSignals.append("\n");
         aboveSignals.append(Signals.FALL.toString());
       }
@@ -336,15 +338,15 @@ public class VGFDeltaExtras extends Study
         }
       }
 
-      int requiredVolumeSequence = 5; // todo user configurable volume sequence (default 5)
-      VolumeSequence volumeSeq = bi.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
-      if (volumeSeq == VolumeSequence.Bullish) {
-          belowSignals.append("\n");
-          belowSignals.append(Signals.VSEQ.toString());
-      } else if (volumeSeq == VolumeSequence.Bearish) {
-          aboveSignals.append("\n");
-          aboveSignals.append(Signals.VSEQ.toString());
-      }
+      // int requiredVolumeSequence = 5; // todo user configurable volume sequence (default 5)
+      // VolumeSequence volumeSeq = bi.hasVolumeSequence(requiredVolumeSequence, requiredVolumeSequence);
+      // if (volumeSeq == VolumeSequence.Bullish) {
+      //     belowSignals.append("\n");
+      //     belowSignals.append(Signals.VSEQ.toString());
+      // } else if (volumeSeq == VolumeSequence.Bearish) {
+      //     aboveSignals.append("\n");
+      //     aboveSignals.append(Signals.VSEQ.toString());
+      // }
 
       int deltaCloseStrength = 95; // todo make user configurable deltaclose strength (default 95)
       int deltaClosePerc = bi.getCloseRangePerc();
@@ -361,7 +363,7 @@ public class VGFDeltaExtras extends Study
       }
 
       if (aboveSignals.length() > 0) {
-        Coordinate c = new Coordinate(sTime, high + (3 * minTickSize));
+        Coordinate c = new Coordinate(sTime, high + (2 * minTickSize));
         addFigure(new Marker(c, Position.TOP, getSettings().getMarker(Names.DOWNMARKERS.toString())));
         Coordinate c2 = new Coordinate(c.getTime(), c.getValue() + (2 * minTickSize));
         Label l = new Label(c2, aboveSignals.toString());
@@ -370,7 +372,7 @@ public class VGFDeltaExtras extends Study
       }
 
       if (belowSignals.length() > 0) {
-        Coordinate c = new Coordinate(sTime, low - (3 * minTickSize));
+        Coordinate c = new Coordinate(sTime, low - (2 * minTickSize));
         addFigure(new Marker(c, Position.BOTTOM, getSettings().getMarker(Names.UPMARKERS.toString())));
         Coordinate c2 = new Coordinate(c.getTime(), c.getValue() - minTickSize);
         Label l = new Label(c2, belowSignals.toString());
