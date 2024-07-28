@@ -112,8 +112,8 @@ public class VGFDeltaExtras extends Study
     others.addRow(new MarkerDescriptor(Names.EXHD.toString(), "Exhaustion Down", Enums.MarkerType.LINE_ARROW, Enums.Size.SMALL, Color.RED.darker(), Color.RED.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.STOPVU.toString(), "Stop Volume Up", Enums.MarkerType.ARROW, Enums.Size.VERY_SMALL, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.STOPVD.toString(), "Stop Volume Down", Enums.MarkerType.ARROW, Enums.Size.VERY_SMALL, Color.RED.darker(), Color.RED.darker(), true, true));
-    others.addRow(new MarkerDescriptor(Names.UPMARKERS.toString(), "Up Markers", Enums.MarkerType.TRIANGLE, Enums.Size.MEDIUM, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
-    others.addRow(new MarkerDescriptor(Names.DOWNMARKERS.toString(), "Down Markers", Enums.MarkerType.TRIANGLE, Enums.Size.MEDIUM, Color.RED.darker(), Color.RED.darker(), true, true));
+    others.addRow(new MarkerDescriptor(Names.UPMARKERS.toString(), "Up Markers", Enums.MarkerType.TRIANGLE, Enums.Size.MEDIUM, new Color(0, 255, 0), new Color(0, 255, 0), true, true));
+    others.addRow(new MarkerDescriptor(Names.DOWNMARKERS.toString(), "Down Markers", Enums.MarkerType.TRIANGLE, Enums.Size.MEDIUM, new Color(255, 0, 0), new Color(255, 0, 0), true, true));
     others.addRow(new MarkerDescriptor(Names.DCLOSERATIOUP.toString(), "Delta Close Near Max", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.GREEN.darker(), Color.GREEN.darker(), true, true));
     others.addRow(new MarkerDescriptor(Names.DCLOSERATIODOWN.toString(), "Delta Close Near Min", Enums.MarkerType.DIAMOND, Enums.Size.LARGE, Color.RED.darker(), Color.RED.darker(), true, true));
     
