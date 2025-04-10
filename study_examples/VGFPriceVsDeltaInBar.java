@@ -43,8 +43,8 @@ public class VGFPriceVsDeltaInBar extends Study
     convdiv.addRow(new ColorDescriptor(Names.UPDIV.toString(), "Up Divergence", new Color(0, 255, 255, 204)));
     convdiv.addRow(new ColorDescriptor(Names.DOWNDIV.toString(), "Down Divergence", new Color(238, 130, 238, 204)));
     convdiv.addRow(new IntegerDescriptor(Names.MESSYTHRESHOLD.toString(), "Messy Threshold", 50, 1, 10000, 1));
-    convdiv.addRow(new IntegerDescriptor(Names.CONVWIDTHFULL.toString(), "Line Width Full", 5, 1, 20, 1));
-    convdiv.addRow(new IntegerDescriptor(Names.CONVWIDTHMESSY.toString(), "Line Width Messy", 2, 1, 20, 1));
+    convdiv.addRow(new IntegerDescriptor(Names.CONVWIDTHFULL.toString(), "Line Width Full", 12,1, 20, 1));
+    convdiv.addRow(new IntegerDescriptor(Names.CONVWIDTHMESSY.toString(), "Line Width Messy", 1, 1, 20, 1));
     tab.addGroup(convdiv);
 
     RuntimeDescriptor desc = new RuntimeDescriptor();
