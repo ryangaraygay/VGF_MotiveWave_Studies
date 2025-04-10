@@ -3,6 +3,8 @@ package study_examples;
 import java.awt.Color;
 
 import com.motivewave.platform.sdk.common.*;
+import com.motivewave.platform.sdk.common.Enums.BarSizeType;
+import com.motivewave.platform.sdk.common.Enums.IntervalType;
 import com.motivewave.platform.sdk.common.desc.*;
 import com.motivewave.platform.sdk.study.*;
 
@@ -81,7 +83,15 @@ public class VGFPriceVsDelta extends Study
     long eTime = series.getEndTime(index);
 
     if (dcc == null) {
-      dcc = new DeltaCloseCalculator();
+      int intervalMinutes = 1;
+      BarSize barSize = ctx.getChartBarSize();
+      if (barSize != null) {
+        if (barSize.getType() == BarSizeType.LINEAR &&
+            barSize.getIntervalType() == IntervalType.MINUTE) {
+              intervalMinutes = barSize.getInterval();
+        }
+      }
+      dcc = new DeltaCloseCalculator(intervalMinutes);
     }
 
     int currentDeltaClose = dcc.getDeltaClose(sTime);

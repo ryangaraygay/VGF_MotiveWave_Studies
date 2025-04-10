@@ -4,6 +4,8 @@ import java.awt.Color;
 import java.util.TimeZone;
 
 import com.motivewave.platform.sdk.common.*;
+import com.motivewave.platform.sdk.common.Enums.BarSizeType;
+import com.motivewave.platform.sdk.common.Enums.IntervalType;
 import com.motivewave.platform.sdk.common.Enums.Position;
 import com.motivewave.platform.sdk.common.Enums.StackPolicy;
 import com.motivewave.platform.sdk.common.desc.*;
@@ -162,7 +164,16 @@ public class VGFDeltaExtras extends Study
     var r = series.getRange(index);
 
     if (dc == null) {
-      dc = new DeltaCalculator();
+      int intervalMinutes = 1;
+      BarSize barSize = ctx.getChartBarSize();
+      if (barSize != null) {
+        if (barSize.getType() == BarSizeType.LINEAR &&
+            barSize.getIntervalType() == IntervalType.MINUTE) {
+              intervalMinutes = barSize.getInterval();
+        }
+      }
+
+      dc = new DeltaCalculator(intervalMinutes);
     }
 
     BarInfo bi = dc.getBarInfo(sTime);
